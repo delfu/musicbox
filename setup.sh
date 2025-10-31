@@ -75,8 +75,11 @@ install_dependencies() {
     sudo apt-get install -y \
         python3 \
         python3-pip \
-        python3-rpi.gpio \
         python3-dev
+    
+    # replace the pi's gpio with an updated version
+    sudo apt remove -y python3-rpi.gpio
+    pip3 install --break-system-packages rpi-lgpio
     
     # Additional useful tools
     sudo apt-get install -y \
@@ -114,6 +117,7 @@ configure_i2s() {
     echo "dtparam=i2s=on" | sudo tee -a $CONFIG_FILE > /dev/null
     echo "dtparam=audio=off" | sudo tee -a $CONFIG_FILE > /dev/null
     echo "dtoverlay=max98357a" | sudo tee -a $CONFIG_FILE > /dev/null
+    echo "dtoverlay=i2s-mmap" | sudo tee -a $CONFIG_FILE > /dev/null
     
     log_info "I2S configuration complete!"
 }
@@ -126,21 +130,80 @@ configure_alsa() {
     
     # Create asound.conf for system-wide ALSA config
     sudo tee /etc/asound.conf > /dev/null << 'EOF'
-pcm.!default {
-    type hw
-    card 0
-    device 0
+pcm.speakerbonnet {
+   type hw card 0 
 }
 
-ctl.!default {
-    type hw
-    card 0
+pcm.!default { 
+   type plug 
+   slave.pcm "dmixer" 
+}
+
+pcm.dmixer { 
+   type dmix 
+   ipc_key 1024
+   ipc_perm 0666
+   slave { 
+     pcm "speakerbonnet" 
+     period_time 0
+     period_size 1024
+     buffer_size 8192
+     rate 44100
+     channels 2 
+   } 
+}
+ctl.dmixer { 
+  type hw card 0 
 }
 EOF
 
     # Set initial volume
     log_info "Setting initial volume to 80%..."
     amixer set PCM 80% 2>/dev/null || log_warn "Could not set volume. Will be available after reboot."
+
+    sudo tee $HOME/.asoundrc > /dev/null << 'EOF'
+pcm.speakerbonnet {
+   type hw card 0
+}
+
+pcm.dmixer {
+   type dmix
+   ipc_key 1024
+   ipc_perm 0666
+   slave {
+     pcm "speakerbonnet"
+     period_time 0
+     period_size 1024
+     buffer_size 8192
+     rate 44100
+     channels 2
+   }
+}
+
+ctl.dmixer {
+    type hw card 0
+}
+
+pcm.softvol {
+    type softvol
+    slave.pcm "dmixer"
+    control.name "PCM"
+    control.card 0
+}
+
+ctl.softvol {
+    type hw card 0
+}
+
+pcm.!default {
+    type             plug
+    slave.pcm       "softvol"
+}
+EOF
+
+    sudo chattr +i ~/.asoundrc
+
+    #you can set volume with amixer set PCM 80%
 }
 
 # Setup USB auto-mount
@@ -296,7 +359,7 @@ main() {
     update_system
     install_dependencies
     configure_i2s
-    # configure_alsa # we dont use alsa for now, not sure if needed
+    configure_alsa 
     setup_usb_mount
     setup_gpio_permissions
     # create_systemd_service # this needs more thoughts so it's disabled for now
