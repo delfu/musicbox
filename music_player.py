@@ -45,8 +45,8 @@ class MusicPlayer:
         self.current_index = 0
         self.state = PlayerState.STOPPED
         self.volume = 50  # Volume percentage (0-100)
-        self.set_volume(50)
         self.display = None
+        self.set_volume(50)
         if display_enabled:
             try:
                 self.display = MusicDisplay()
