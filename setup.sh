@@ -91,7 +91,7 @@ install_dependencies() {
 }
 
 # Configure I2S audio
-configure_i2s() {
+configure_firmware() {
     log_info "Configuring I2S audio..."
     
     CONFIG_FILE="/boot/firmware/config.txt"
@@ -107,6 +107,7 @@ configure_i2s() {
     
     # Remove any existing I2S configs to avoid duplicates
     sudo sed -i '/^dtparam=i2s=/d' $CONFIG_FILE
+    sudo sed -i '/^dtparam=spi=/d' $CONFIG_FILE
     sudo sed -i '/^dtoverlay=max98357a/d' $CONFIG_FILE
     sudo sed -i '/^dtparam=audio/d' $CONFIG_FILE
     
@@ -115,6 +116,7 @@ configure_i2s() {
     echo "" | sudo tee -a $CONFIG_FILE > /dev/null
     echo "# I2S Audio Configuration for MAX98357A" | sudo tee -a $CONFIG_FILE > /dev/null
     echo "dtparam=i2s=on" | sudo tee -a $CONFIG_FILE > /dev/null
+    echo "dtparam=spi=on" | sudo tee -a $CONFIG_FILE > /dev/null
     echo "dtparam=audio=off" | sudo tee -a $CONFIG_FILE > /dev/null
     echo "dtoverlay=max98357a" | sudo tee -a $CONFIG_FILE > /dev/null
     echo "dtoverlay=i2s-mmap" | sudo tee -a $CONFIG_FILE > /dev/null
@@ -124,8 +126,6 @@ configure_i2s() {
 
 # Configure ALSA
 configure_alsa() {
-    # TODO: we dont use alsa for now
-
     log_info "Configuring ALSA..."
     
     # Create asound.conf for system-wide ALSA config
@@ -358,7 +358,7 @@ main() {
     
     update_system
     install_dependencies
-    configure_i2s
+    configure_firmware
     configure_alsa 
     setup_usb_mount
     setup_gpio_permissions
