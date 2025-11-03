@@ -34,7 +34,8 @@ class MusicDisplay:
             dc=dc_pin,
             rst=reset_pin,
             width=240,
-            height=320
+            height=320,
+            rotation=90
         )
         
         self.width = 320
@@ -145,7 +146,9 @@ class MusicDisplay:
             
             # Look for album art in APIC frames
             for tag in audio.values():
+                print(tag)
                 if isinstance(tag, APIC):
+                    print("here")
                     # Load image from tag data
                     artwork = Image.open(io.BytesIO(tag.data))
                     
