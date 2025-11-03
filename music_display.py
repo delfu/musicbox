@@ -8,22 +8,19 @@ import busio
 import digitalio
 import board
 from PIL import Image, ImageDraw, ImageFont
-import adafruit_ili9341
 import adafruit_rgb_display.ili9341 as ili9341
 from mutagen.mp3 import MP3
 from mutagen.id3 import ID3, APIC
 import io
 
 class MusicDisplay:
-    def __init__(self, rotation=90):
+    def __init__(self):
         """
         Initialize the 2.8" TFT display
-        
-        Args:
-            rotation: Display rotation (0, 90, 180, 270)
         """
         # Configuration for display
-        cs_pin = digitalio.DigitalInOut(board.CE0)
+        # CS pin will be tied to GND and is always active. tying it to CE0 causes GPIO busy, im not sure why
+        cs_pin = None# digitalio.DigitalInOut(board.CE0)
         dc_pin = digitalio.DigitalInOut(board.D25)  # GPIO 25
         reset_pin = digitalio.DigitalInOut(board.D24)  # GPIO 24
         
@@ -31,23 +28,17 @@ class MusicDisplay:
         spi = busio.SPI(clock=board.SCK, MOSI=board.MOSI, MISO=board.MISO)
         
         # Create the display object
-        self.display = adafruit_ili9341.ILI9341(
+        self.display = ili9341.ILI9341(
             spi,
             cs=cs_pin,
             dc=dc_pin,
             rst=reset_pin,
             width=240,
-            height=320,
-            rotation=rotation
+            height=320
         )
         
-        # Set dimensions based on rotation
-        if rotation in [90, 270]:
-            self.width = 320
-            self.height = 240
-        else:
-            self.width = 240
-            self.height = 320
+        self.width = 320
+        self.height = 240
             
         # Create drawing objects
         self.image = Image.new("RGB", (self.width, self.height))
