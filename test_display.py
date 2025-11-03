@@ -8,13 +8,14 @@ import board
 import busio
 import digitalio
 from PIL import Image, ImageDraw, ImageFont
-import adafruit_ili9341
+import adafruit_rgb_display.ili9341 as ili9341
 
-def test_display():
+def main():
     print("Initializing display...")
     
     # Setup pins
-    cs_pin = digitalio.DigitalInOut(board.CE0)
+    # cs pin is tied to GND and always enabled. Connecting to CE0 causes a GPIO busy error, im not sure why
+    # cs_pin = digitalio.DigitalInOut(board.CE0)
     dc_pin = digitalio.DigitalInOut(board.D25)
     reset_pin = digitalio.DigitalInOut(board.D24)
     
@@ -24,9 +25,9 @@ def test_display():
     
     # Create display object
     print("Creating display object...")
-    display = adafruit_ili9341.ILI9341(
+    display = ili9341.ILI9341(
         spi,
-        cs=cs_pin,
+        cs=None,
         dc=dc_pin,
         rst=reset_pin,
         width=240,
@@ -88,4 +89,4 @@ def test_display():
         display.image(image)
 
 if __name__ == "__main__":
-    test_display()
+    main()

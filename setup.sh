@@ -87,6 +87,11 @@ install_dependencies() {
         vim \
         htop 
     
+    # packages for display
+    sudo apt-get install python3-pil python3-numpy
+    pip3 install --break-system-packages adafruit-circuitpython-rgb-display
+    pip3 install --break-system-packages mutagen  # For MP3 metadata
+    
     log_info "Dependencies installed successfully!"
 }
 
@@ -105,7 +110,8 @@ configure_firmware() {
     log_info "Disabling onboard audio..."
     sudo sed -i 's/^dtparam=audio=on/#dtparam=audio=on/g' $CONFIG_FILE
     
-    # Remove any existing I2S configs to avoid duplicates
+    # Remove any existing I2S/SPI configs to avoid duplicates
+    sudo sed -i '/^dtoverlay=vc4-kms-v3d/d' $CONFIG_FILE
     sudo sed -i '/^dtparam=i2s=/d' $CONFIG_FILE
     sudo sed -i '/^dtparam=spi=/d' $CONFIG_FILE
     sudo sed -i '/^dtoverlay=max98357a/d' $CONFIG_FILE
@@ -116,12 +122,14 @@ configure_firmware() {
     echo "" | sudo tee -a $CONFIG_FILE > /dev/null
     echo "# I2S Audio Configuration for MAX98357A" | sudo tee -a $CONFIG_FILE > /dev/null
     echo "dtparam=i2s=on" | sudo tee -a $CONFIG_FILE > /dev/null
-    echo "dtparam=spi=on" | sudo tee -a $CONFIG_FILE > /dev/null
     echo "dtparam=audio=off" | sudo tee -a $CONFIG_FILE > /dev/null
     echo "dtoverlay=max98357a" | sudo tee -a $CONFIG_FILE > /dev/null
     echo "dtoverlay=i2s-mmap" | sudo tee -a $CONFIG_FILE > /dev/null
+
+    # Add SPI configuration
+    echo "dtparam=spi=on" | sudo tee -a $CONFIG_FILE > /dev/null
     
-    log_info "I2S configuration complete!"
+    log_info "Firmware configuration complete!"
 }
 
 # Configure ALSA
