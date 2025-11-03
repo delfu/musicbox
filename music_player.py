@@ -43,6 +43,7 @@ class MusicPlayer:
         self.current_index = 0
         self.state = PlayerState.STOPPED
         self.volume = 50  # Volume percentage (0-100)
+        self.set_volume(50)
         
         # Threading for physical controls
         self.control_thread = None
@@ -220,8 +221,6 @@ class MusicPlayer:
         print("  q - Quit")
         print("=============================\n")
         
-        # Set initial volume
-        self.set_volume(self.volume)
         
         # Start playing first song
         self.play_file(self.playlist[0])
@@ -468,7 +467,7 @@ def main():
         print("  sudo mkdir -p /mnt/usbdrive")
         print("  sudo mount /dev/sda1 /mnt/usbdrive")
         return
-    
+     
     # Choose mode
     print("\nSelect mode:")
     print("  1. Play all songs")
