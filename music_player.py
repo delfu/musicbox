@@ -94,7 +94,7 @@ class MusicPlayer:
     def update_display(self):
         current = self.playlist[self.current_index] if self.playlist else ""
         if self.display:
-            print("display: updating now playing")
+            print("display: updating now playing", current, self.state.name)
             self.display.update_now_playing(
                 current,
                 state=self.state.name,
@@ -102,9 +102,6 @@ class MusicPlayer:
                 current_index=self.current_index,
                 total_tracks=len(self.playlist)
             )
-            if current:
-                print("display: updating album art")
-                self.display.show_album_art(current)
     
     def set_volume(self, volume: int):
         """

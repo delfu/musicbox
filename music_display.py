@@ -93,6 +93,10 @@ class MusicDisplay:
             total_tracks: Total number of tracks
         """
         self.clear()
+
+        # fetch album art
+        if state == "PLAYING" or state == "PAUSED":
+            self.paste_album_art(filename)
         
         # Extract song name without path and extension
         song_name = filename.split('/')[-1].rsplit('.', 1)[0]
@@ -131,10 +135,11 @@ class MusicDisplay:
         self.draw.text((10, 200), "Play/Pause | Next | Prev | Volume", 
                       font=self.font_small, fill=(128, 128, 128))
         
+        
         # Update display
         self.display.image(self.image)
         
-    def show_album_art(self, mp3_file):
+    def paste_album_art(self, mp3_file):
         """
         Extract and display album art from MP3 file
         
@@ -155,7 +160,6 @@ class MusicDisplay:
                     
                     # Paste onto display image
                     self.image.paste(artwork, (self.width - 170, 40))
-                    self.display.image(self.image)
                     return True
         except:
             pass
