@@ -42,7 +42,7 @@ class MusicPlayer:
         self.playlist = []
         self.current_index = 0
         self.state = PlayerState.STOPPED
-        self.volume = 80  # Volume percentage (0-100)
+        self.volume = 50  # Volume percentage (0-100)
         
         # Threading for physical controls
         self.control_thread = None
@@ -370,7 +370,7 @@ class MusicPlayer:
     def _encoder_button_callback(self, channel):
         """Handle encoder push button press - toggle mute or reset volume"""
         print("Encoder button pressed - resetting volume to 80%")
-        self.set_volume(80)
+        self.set_volume(self.volume)
     
     def _play_pause_callback(self, channel):
         """Handle play/pause button press"""
