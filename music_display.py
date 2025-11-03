@@ -146,9 +146,7 @@ class MusicDisplay:
             
             # Look for album art in APIC frames
             for tag in audio.values():
-                print(tag)
                 if isinstance(tag, APIC):
-                    print("here")
                     # Load image from tag data
                     artwork = Image.open(io.BytesIO(tag.data))
                     

@@ -15,6 +15,8 @@ import sys
 import threading
 from enum import Enum
 
+from music_display import MusicDisplay
+
 # GPIO will be imported only if running on Pi
 try:
     import RPi.GPIO as GPIO
@@ -30,7 +32,7 @@ class PlayerState(Enum):
     PAUSED = 2
 
 class MusicPlayer:
-    def __init__(self, music_directory: str = "/mnt/usbdrive"):
+    def __init__(self, display_enabled: bool = True, music_directory: str = "/mnt/usbdrive"):
         """
         Initialize the music player
         
@@ -44,6 +46,15 @@ class MusicPlayer:
         self.state = PlayerState.STOPPED
         self.volume = 50  # Volume percentage (0-100)
         self.set_volume(50)
+        self.display = None
+        if display_enabled:
+            try:
+                self.display = MusicDisplay()
+                self.display.show_splash()
+            except Exception as e:
+                print(f"Display initialization failed: {e}")
+                self.display = None
+
         
         # Threading for physical controls
         self.control_thread = None
@@ -79,6 +90,19 @@ class MusicPlayer:
                     mp3_files.append(full_path)
                     
         return sorted(mp3_files)
+
+    def update_display(self):
+        current = self.playlist[self.current_index] if self.playlist else ""
+        if self.display:
+            self.display.update_now_playing(
+                current,
+                state=self.state.name,
+                volume=self.volume,
+                current_index=self.current_index,
+                total_tracks=len(self.playlist)
+            )
+            if current:
+                self.display.show_album_art(current)
     
     def set_volume(self, volume: int):
         """
@@ -96,6 +120,7 @@ class MusicPlayer:
                 check=False
             )
             print(f"Volume: {self.volume}%")
+            self.update_display()
         except Exception as e:
             print(f"Error setting volume: {e}")
     
@@ -127,6 +152,7 @@ class MusicPlayer:
                 stderr=subprocess.DEVNULL
             )
             self.state = PlayerState.PLAYING
+            self.update_display()
             
         except FileNotFoundError:
             print("Error: mpg123 not found. Install it with: sudo apt-get install mpg123")
@@ -387,6 +413,7 @@ class MusicPlayer:
             try:
                 self.current_process.send_signal(signal.SIGSTOP)
                 self.state = PlayerState.PAUSED
+                self.update_display()
                 print("Paused")
             except:
                 pass
@@ -397,6 +424,7 @@ class MusicPlayer:
             try:
                 self.current_process.send_signal(signal.SIGCONT)
                 self.state = PlayerState.PLAYING
+                self.update_display()
                 print("Resumed")
             except:
                 pass
