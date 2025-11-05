@@ -458,48 +458,37 @@ class MusicPlayer:
                 pass
 
     def _volume_control_thread2(self):
-        """Thread to monitor rotary encoder for volume control with proper quadrature decoding"""
+        """Robust quadrature decoding using state transitions"""
         if not GPIO_AVAILABLE:
             return
-            
+
         a_pin = self.pins['encoder_a']
         b_pin = self.pins['encoder_b']
-        
-        # Track full encoder state (both A and B)
-        last_encoded = (GPIO.input(a_pin) << 1) | GPIO.input(b_pin)
-        
-        # Lookup table for quadrature decoding
-        # Rows = previous state, Columns = new state
-        # Values: 0=no change, 1=CW, -1=CCW, 2=invalid/bounce
-        encoder_states = [
-            [0, -1, 1, 2],   # 00 -> 00,01,10,11
-            [1, 0, 2, -1],   # 01 -> 00,01,10,11
-            [-1, 2, 0, 1],   # 10 -> 00,01,10,11
-            [2, 1, -1, 0]    # 11 -> 00,01,10,11
+
+        # Track previous state
+        last_state = (GPIO.input(a_pin) << 1) | GPIO.input(b_pin)
+
+        # Quadrature lookup table: previous_state -> new_state -> delta
+        transition_table = [
+            [0, -1, 1, 0],   # 00 -> 00,01,10,11
+            [1, 0, 0, -1],   # 01 -> 00,01,10,11
+            [-1, 0, 0, 1],   # 10 -> 00,01,10,11
+            [0, 1, -1, 0]    # 11 -> 00,01,10,11
         ]
-        
+
         while self.running:
-            try:
-                # Read both pins simultaneously (as much as possible)
-                a_state = GPIO.input(a_pin)
-                b_state = GPIO.input(b_pin)
-                encoded = (a_state << 1) | b_state
-                
-                # Only process if state changed
-                if encoded != last_encoded:
-                    direction = encoder_states[last_encoded][encoded]
-                    
-                    if direction == 1:  # Clockwise
-                        self.volume_up(step=2)
-                    elif direction == -1:  # Counter-clockwise
-                        self.volume_down(step=2)
-                    # direction == 2 means invalid transition (ignore bounce)
-                    
-                    last_encoded = encoded
-                
-                time.sleep(0.001)
-            except:
-                pass
+            a_state = GPIO.input(a_pin)
+            b_state = GPIO.input(b_pin)
+            new_state = (a_state << 1) | b_state
+            delta = transition_table[last_state][new_state]
+
+            if delta == 1:
+                self.volume_up(step=2)
+            elif delta == -1:
+                self.volume_down(step=2)
+
+            last_state = new_state
+            time.sleep(0.001)
 
 def main():
     """Main entry point"""
