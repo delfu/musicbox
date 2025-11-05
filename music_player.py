@@ -306,10 +306,10 @@ class MusicPlayer:
         print("\nShutting down...")
         self.running = False
         self.stop()
+        if self.display:
+            self.display.cleanup()
         if GPIO_AVAILABLE:
             GPIO.cleanup()
-        if self.display:
-            self.display.clear()
         sys.exit(0)
     
     # ==================== GPIO CONTROL METHODS ====================
@@ -318,8 +318,8 @@ class MusicPlayer:
                            play_pause_pin: int = 17,
                            next_pin: int = 27,
                            prev_pin: int = 22,
-                           encoder_a_pin: int = 5,
-                           encoder_b_pin: int = 6,
+                           encoder_a_pin: int = 6,
+                           encoder_b_pin: int = 5,
                            encoder_sw_pin: int = 13,
                            debounce_ms: int = 200):
         """

@@ -70,6 +70,9 @@ class MusicDisplay:
         """Clear the display"""
         self.draw.rectangle((0, 0, self.width, self.height), fill=self.BLACK)
         self.display.image(self.image)
+    
+    def cleanup(self):
+        self.clear()
         
     def show_splash(self):
         """Show splash screen"""

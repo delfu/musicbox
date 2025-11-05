@@ -33,3 +33,13 @@ COMMON -> GND
 11 (play/pause)
 13 (next)
 15 (previous)
+
+# Rotary encoder (volume knob)
+
+LEFT PIN -> 31
+MIDDLE -> GND
+RIGHT PIN -> 29
+
+for clicking: (two pins on the other side)
+LEFT_PIN -> 33
+RIGHT_PIN -> GND
