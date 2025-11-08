@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Test script for GPIO buttons and encoder"""
+"""Test script for GPIO buttons and encoder using gpiozero"""
 
-import RPi.GPIO as GPIO
+from gpiozero import Button
 import time
+import signal
+import sys
 
 # Pin definitions
 PLAY_PAUSE_PIN = 17
@@ -12,38 +14,40 @@ ENCODER_A_PIN = 5
 ENCODER_B_PIN = 6
 ENCODER_SW_PIN = 13
 
-GPIO.setmode(GPIO.BCM)
-GPIO.setwarnings(False)
-
-# Setup all pins
-pins = {
-    "Play/Pause": PLAY_PAUSE_PIN,
-    "Next": NEXT_PIN,
-    "Previous": PREV_PIN,
-    "Encoder A": ENCODER_A_PIN,
-    "Encoder B": ENCODER_B_PIN,
-    "Encoder Button": ENCODER_SW_PIN
+# Setup all button objects with pull-ups (active-low)
+buttons = {
+    "Play/Pause": Button(PLAY_PAUSE_PIN, pull_up=True, bounce_time=0.01),
+    "Next": Button(NEXT_PIN, pull_up=True, bounce_time=0.01),
+    "Previous": Button(PREV_PIN, pull_up=True, bounce_time=0.01),
+    "Encoder A": Button(ENCODER_A_PIN, pull_up=True, bounce_time=0.01),
+    "Encoder B": Button(ENCODER_B_PIN, pull_up=True, bounce_time=0.01),
+    "Encoder Button": Button(ENCODER_SW_PIN, pull_up=True, bounce_time=0.01)
 }
 
-for name, pin in pins.items():
-    GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-    print(f"{name:15} on GPIO {pin:2} - Press to test")
+# Setup callbacks
+def make_callback(name):
+    """Create a callback function for each button"""
+    def callback():
+        print(f"✓ {name} pressed!")
+    return callback
+
+for name, button in buttons.items():
+    button.when_pressed = make_callback(name)
+    print(f"{name:15} on GPIO {button.pin.number:2} - Press to test")
 
 print("\nPress Ctrl+C to exit")
 print("-" * 40)
 
-last_states = {pin: GPIO.input(pin) for pin in pins.values()}
+def signal_handler(sig, frame):
+    print("\nTest complete!")
+    # gpiozero handles cleanup automatically
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
 
 try:
+    # Keep the script running
     while True:
-        for name, pin in pins.items():
-            current = GPIO.input(pin)
-            if current != last_states[pin]:
-                if current == 0:
-                    print(f"✓ {name} pressed!")
-                last_states[pin] = current
-        time.sleep(0.01)
+        time.sleep(0.1)
 except KeyboardInterrupt:
     print("\nTest complete!")
-finally:
-    GPIO.cleanup()

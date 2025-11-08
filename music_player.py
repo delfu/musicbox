@@ -19,11 +19,11 @@ import argparse
 from music_display import MusicDisplay
 
 try:
-    import RPi.GPIO as GPIO
+    from gpiozero import Button, RotaryEncoder
     GPIO_AVAILABLE = True
 except ImportError:
     GPIO_AVAILABLE = False
-    print("Warning: RPi.GPIO not available - physical controls disabled")
+    print("Warning: gpiozero not available - physical controls disabled")
 
 class PlayerState(Enum):
     """Player state enumeration"""
@@ -308,8 +308,7 @@ class MusicPlayer:
         self.stop()
         if self.display:
             self.display.cleanup()
-        if GPIO_AVAILABLE:
-            GPIO.cleanup()
+        # gpiozero handles cleanup automatically, no explicit cleanup needed
         sys.exit(0)
     
     # ==================== GPIO CONTROL METHODS ====================
@@ -321,9 +320,9 @@ class MusicPlayer:
                            encoder_a_pin: int = 6,
                            encoder_b_pin: int = 5,
                            encoder_sw_pin: int = 13,
-                           debounce_ms: int = 200):
+                           debounce_time: float = 0.2):
         """
-        Setup GPIO pins for physical controls
+        Setup GPIO pins for physical controls using gpiozero
         
         Args:
             play_pause_pin: GPIO pin for play/pause button
@@ -332,73 +331,50 @@ class MusicPlayer:
             encoder_a_pin: GPIO pin for rotary encoder A signal
             encoder_b_pin: GPIO pin for rotary encoder B signal
             encoder_sw_pin: GPIO pin for rotary encoder push button
-            debounce_ms: Debounce time in milliseconds
+            debounce_time: Debounce time in seconds (default 0.2s)
         """
         if not GPIO_AVAILABLE:
             print("GPIO not available - physical controls disabled")
             return False
         
-        print("Setting up GPIO controls...")
+        print("Setting up GPIO controls with gpiozero...")
         
-        # Use BCM pin numbering
-        GPIO.setmode(GPIO.BCM)
+        # Setup buttons with pull-up resistors (active-low)
+        # gpiozero Button uses pull_up=True by default, which is what we want
+        self.play_pause_button = Button(play_pause_pin, pull_up=True, bounce_time=debounce_time)
+        self.next_button = Button(next_pin, pull_up=True, bounce_time=debounce_time)
+        self.prev_button = Button(prev_pin, pull_up=True, bounce_time=debounce_time)
+        self.encoder_button = Button(encoder_sw_pin, pull_up=True, bounce_time=debounce_time)
         
-        # Setup button pins with pull-up resistors
-        GPIO.setup(play_pause_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        GPIO.setup(next_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        GPIO.setup(prev_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        # Setup rotary encoder for volume control
+        # RotaryEncoder handles A and B pins automatically with proper quadrature decoding
+        self.encoder = RotaryEncoder(encoder_a_pin, encoder_b_pin, bounce_time=0.001, max_steps=100)
         
-        # Setup rotary encoder pins (Adafruit 377)
-        GPIO.setup(encoder_a_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        GPIO.setup(encoder_b_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        GPIO.setup(encoder_sw_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        # Setup button callbacks
+        self.play_pause_button.when_pressed = self._play_pause_callback
+        self.next_button.when_pressed = lambda: self.play_next()
+        self.prev_button.when_pressed = lambda: self.play_previous()
+        self.encoder_button.when_pressed = self._encoder_button_callback
         
-        # Store pins
-        self.pins = {
-            'play_pause': play_pause_pin,
-            'next': next_pin,
-            'prev': prev_pin,
-            'encoder_a': encoder_a_pin,
-            'encoder_b': encoder_b_pin,
-            'encoder_sw': encoder_sw_pin
-        }
-        
-        # Setup button callbacks (falling edge = button pressed)
-        GPIO.add_event_detect(play_pause_pin, GPIO.FALLING, 
-                             callback=self._play_pause_callback, 
-                             bouncetime=debounce_ms)
-        
-        GPIO.add_event_detect(next_pin, GPIO.FALLING,
-                             callback=lambda ch: self.play_next(),
-                             bouncetime=debounce_ms)
-        
-        GPIO.add_event_detect(prev_pin, GPIO.FALLING,
-                             callback=lambda ch: self.play_previous(),
-                             bouncetime=debounce_ms)
-        
-        # Setup encoder button callback
-        GPIO.add_event_detect(encoder_sw_pin, GPIO.FALLING,
-                             callback=self._encoder_button_callback,
-                             bouncetime=debounce_ms)
-        
-        # Start volume control thread for rotary encoder
-        self.last_a_state = GPIO.input(encoder_a_pin)
-        self.control_thread = threading.Thread(target=self._volume_control_thread2)
-        self.control_thread.daemon = True
-        self.control_thread.start()
+        # Setup encoder callback for volume control
+        self.encoder.when_rotated_clockwise = lambda: self.volume_up(step=2)
+        self.encoder.when_rotated_counter_clockwise = lambda: self.volume_down(step=2)
         
         print("GPIO controls ready!")
+        print("  • Play/Pause button on GPIO", play_pause_pin)
+        print("  • Next button on GPIO", next_pin)
+        print("  • Previous button on GPIO", prev_pin)
         print("  • Encoder A pin connected to GPIO", encoder_a_pin)
         print("  • Encoder B pin connected to GPIO", encoder_b_pin)
         print("  • Encoder button connected to GPIO", encoder_sw_pin)
         return True
     
-    def _encoder_button_callback(self, channel):
+    def _encoder_button_callback(self):
         """Handle encoder push button press - toggle mute or reset volume"""
         print("Encoder button pressed - resetting volume to 80%")
         self.set_volume(self.volume)
     
-    def _play_pause_callback(self, channel):
+    def _play_pause_callback(self):
         """Handle play/pause button press"""
         if self.state == PlayerState.PLAYING:
             self.pause()
@@ -429,66 +405,6 @@ class MusicPlayer:
                 print("Resumed")
             except:
                 pass
-    
-    def _volume_control_thread(self):
-        """Thread to monitor rotary encoder for volume control"""
-        if not GPIO_AVAILABLE:
-            return
-            
-        a_pin = self.pins['encoder_a']
-        b_pin = self.pins['encoder_b']
-        
-        while self.running:
-            try:
-                a_state = GPIO.input(a_pin)
-                
-                if a_state != self.last_a_state:
-                    b_state = GPIO.input(b_pin)
-                    
-                    # Determine rotation direction based on A and B signals
-                    if b_state != a_state:
-                        self.volume_up(step=2)
-                    else:
-                        self.volume_down(step=2)
-                    
-                    self.last_a_state = a_state
-                
-                time.sleep(0.001)  # Small delay to prevent CPU hogging
-            except:
-                pass
-
-    def _volume_control_thread2(self):
-        """Robust quadrature decoding using state transitions"""
-        if not GPIO_AVAILABLE:
-            return
-
-        a_pin = self.pins['encoder_a']
-        b_pin = self.pins['encoder_b']
-
-        # Track previous state
-        last_state = (GPIO.input(a_pin) << 1) | GPIO.input(b_pin)
-
-        # Quadrature lookup table: previous_state -> new_state -> delta
-        transition_table = [
-            [0, -1, 1, 0],   # 00 -> 00,01,10,11
-            [1, 0, 0, -1],   # 01 -> 00,01,10,11
-            [-1, 0, 0, 1],   # 10 -> 00,01,10,11
-            [0, 1, -1, 0]    # 11 -> 00,01,10,11
-        ]
-
-        while self.running:
-            a_state = GPIO.input(a_pin)
-            b_state = GPIO.input(b_pin)
-            new_state = (a_state << 1) | b_state
-            delta = transition_table[last_state][new_state]
-
-            if delta == 1:
-                self.volume_up(step=2)
-            elif delta == -1:
-                self.volume_down(step=2)
-
-            last_state = new_state
-            time.sleep(0.001)
 
 def main():
     """Main entry point"""

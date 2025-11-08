@@ -77,9 +77,8 @@ install_dependencies() {
         python3-pip \
         python3-dev
     
-    # replace the pi's gpio with an updated version
-    sudo apt remove -y python3-rpi.gpio
-    pip3 install --break-system-packages rpi-lgpio
+    # Install gpiozero - the official Raspberry Pi GPIO library
+    sudo apt-get install -y python3-gpiozero python3-lgpio
     
     # Additional useful tools
     sudo apt-get install -y \
