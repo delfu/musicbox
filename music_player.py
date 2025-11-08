@@ -49,7 +49,7 @@ class MusicPlayer:
         self.set_volume(30) # Volume percentage (0-100)
         if display_enabled:
             try:
-                self.display = MusicDisplay()
+                self.display = MusicDisplay(270)
                 self.display.show_splash()
             except Exception as e:
                 print(f"Display initialization failed: {e}")
