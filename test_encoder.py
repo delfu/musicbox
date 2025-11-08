@@ -10,8 +10,8 @@ import sys
 import signal
 
 # Pin definitions
-ENCODER_A_PIN = 5
-ENCODER_B_PIN = 6
+ENCODER_A_PIN = 6
+ENCODER_B_PIN = 5
 ENCODER_SW_PIN = 13
 
 class EncoderTest:

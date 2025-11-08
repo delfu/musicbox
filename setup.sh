@@ -75,11 +75,12 @@ install_dependencies() {
     sudo apt-get install -y \
         python3 \
         python3-pip \
-        python3-dev
+        python3-dev \
+        swig \
+        python3-setuptools
     
     # Install gpiozero - the official Raspberry Pi GPIO library
-    sudo apt-get install -y python3-gpiozero python3-lgpio
-    
+    sudo apt-get install -y python3-gpiozero python3-lgpio python3-rpi-lgpio
     # Additional useful tools
     sudo apt-get install -y \
         git \

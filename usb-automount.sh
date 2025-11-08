@@ -23,10 +23,16 @@ case "$1" in
       log "failed to mount $DEVNAME (see /tmp/usb-automount.log)"
     else
       log "mounted $DEVNAME successfully"
+      # Run as pi user with full environment (HOME, PATH, etc.)
+      sudo -u pi -H bash -c 'cd /home/pi/musicbox && python3 music_player.py' >> /tmp/usb-automount.log 2>&1 &
+      log "started music player as pi user"
     fi
     ;;
 
   remove)
+    log "killing music player"
+    pkill -f 'python.*music_player\.py$'
+
     log "unmounting $MOUNT_POINT"
     /bin/umount "$MOUNT_POINT" >> /tmp/usb-automount.log 2>&1
     if [ $? -ne 0 ]; then
@@ -34,5 +40,6 @@ case "$1" in
     else
       log "unmounted successfully"
     fi
+
     ;;
 esac
