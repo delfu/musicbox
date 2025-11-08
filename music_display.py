@@ -14,7 +14,7 @@ from mutagen.id3 import ID3, APIC
 import io
 
 class MusicDisplay:
-    def __init__(self):
+    def __init__(self, rotation=90):
         """
         Initialize the 2.8" TFT display
         """
@@ -35,7 +35,7 @@ class MusicDisplay:
             rst=reset_pin,
             width=240,
             height=320,
-            rotation=90
+            rotation=rotation
         )
         
         self.width = 320
@@ -72,7 +72,10 @@ class MusicDisplay:
         self.display.image(self.image)
     
     def cleanup(self):
-        self.clear()
+        try:
+            self.clear()
+        except:
+            print("Screen failed to clear")
         
     def show_splash(self):
         """Show splash screen"""

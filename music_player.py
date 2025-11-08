@@ -14,10 +14,10 @@ import signal
 import sys
 import threading
 from enum import Enum
+import argparse
 
 from music_display import MusicDisplay
 
-# GPIO will be imported only if running on Pi
 try:
     import RPi.GPIO as GPIO
     GPIO_AVAILABLE = True
@@ -315,8 +315,8 @@ class MusicPlayer:
     # ==================== GPIO CONTROL METHODS ====================
     
     def setup_gpio_controls(self, 
-                           play_pause_pin: int = 17,
-                           next_pin: int = 27,
+                           play_pause_pin: int = 27,
+                           next_pin: int = 17,
                            prev_pin: int = 22,
                            encoder_a_pin: int = 6,
                            encoder_b_pin: int = 5,
@@ -496,7 +496,15 @@ def main():
     print("  Raspberry Pi MP3 Player")
     print("  For MAX98357A I2S Amplifiers")
     print("=================================\n")
-    
+
+    parser = argparse.ArgumentParser(
+                    prog='MusicPlayer',
+                    description='A Raspberrypi based music player')
+    parser.add_argument('-i', '--interactive', help='load up in interactive mode, using keyboard', action=argparse.BooleanOptionalAction)
+    args = parser.parse_args()
+
+    keyboard_mode = args.interactive
+
     # Check if running on Raspberry Pi
     is_pi = os.path.exists('/proc/device-tree/model')
     if not is_pi:
@@ -507,16 +515,7 @@ def main():
     
     # Setup GPIO controls if on Pi
     if is_pi and GPIO_AVAILABLE:
-        print("\nEnable physical controls? (y/n): ", end="")
-        if input().strip().lower() == 'y':
-            player.setup_gpio_controls()
-            print("\nPhysical controls enabled:")
-            print("  • Play/Pause button: GPIO 17")
-            print("  • Next button: GPIO 27")
-            print("  • Previous button: GPIO 22")
-            print("  • Volume encoder A: GPIO 5")
-            print("  • Volume encoder B: GPIO 6")
-            print("  • Encoder button: GPIO 13")
+        player.setup_gpio_controls()
     
     # Load playlist from USB
     if not player.load_playlist():
@@ -529,21 +528,10 @@ def main():
         print("  sudo mount /dev/sda1 /mnt/usbdrive")
         return
      
-    # Choose mode
-    print("\nSelect mode:")
-    print("  1. Play all songs")
-    print("  2. Interactive mode (keyboard control)")
-    if GPIO_AVAILABLE:
-        print("  3. Physical controls only (no keyboard)")
-    
     try:
-        choice = input("\nEnter choice: ").strip()
-        
-        if choice == '1':
-            player.play_all()
-        elif choice == '2':
+        if keyboard_mode:
             player.interactive_mode()
-        elif choice == '3' and GPIO_AVAILABLE:
+        elif GPIO_AVAILABLE:
             print("\nPhysical control mode active")
             print("Use buttons/knobs to control playback")
             print("Press Ctrl+C to exit\n")
