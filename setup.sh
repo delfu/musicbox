@@ -91,6 +91,9 @@ install_dependencies() {
     sudo apt-get install python3-pil python3-numpy
     pip3 install --break-system-packages adafruit-circuitpython-rgb-display
     pip3 install --break-system-packages mutagen  # For MP3 metadata
+
+    # TODO: this is only needed if we launch the player as root
+    cd $HOME/$REPO_NAME && python3 -m venv venv --system-site-packages
     
     log_info "Dependencies installed successfully!"
 }

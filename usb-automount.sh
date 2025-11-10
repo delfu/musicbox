@@ -24,7 +24,7 @@ case "$1" in
     else
       log "mounted $DEVNAME successfully"
       # Run as pi user with full environment (HOME, PATH, etc.)
-      sudo -u pi -H bash -c 'cd /home/pi/musicbox && python3 music_player.py' >> /tmp/usb-automount.log 2>&1 &
+      sudo -u pi -H bash -c 'cd /home/pi/musicbox && source venv/bin/activate && python music_player.py'
       log "started music player as pi user"
     fi
     ;;
