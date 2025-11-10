@@ -60,6 +60,10 @@ class MusicPlayer:
         self.control_thread = None
         self.running = True
         
+        # USB ejection state
+        self.usb_ejected = False
+        self.usb_power_enabled = True
+        
         # Callback functions for physical controls
         self.button_callbacks = {}
         
@@ -345,6 +349,11 @@ class MusicPlayer:
         media_was_available = False
         
         while self.running:
+            # Skip auto-play if USB has been manually ejected
+            if self.usb_ejected:
+                time.sleep(check_interval)
+                continue
+            
             media_available = self.is_media_available()
             
             # Media just became available
@@ -441,9 +450,22 @@ class MusicPlayer:
         return True
     
     def _encoder_button_callback(self):
-        """Handle encoder push button press - toggle mute or reset volume"""
-        print("Encoder button pressed - resetting volume to 80%")
-        self.set_volume(self.volume)
+        """Handle encoder push button press - eject/reenable USB"""
+        if self.usb_ejected:
+            # USB is ejected, re-enable it
+            self.reenable_usb()
+        else:
+            # USB is active, check if we should eject it
+            if self.is_media_available():
+                # Media is connected, eject it
+                self.eject_usb()
+                # Optionally cut USB power (only if uhubctl is available)
+                # This is optional - the USB is safely unmounted regardless
+                if self.check_uhubctl_available():
+                    print("\nOptional: Cutting USB power for complete isolation...")
+                    self.toggle_usb_power(False)
+            else:
+                print("No media connected to eject")
     
     def _play_pause_callback(self):
         """Handle play/pause button press"""
@@ -476,6 +498,190 @@ class MusicPlayer:
                 print("Resumed")
             except:
                 pass
+    
+    def find_usb_device(self) -> Optional[str]:
+        """
+        Find the USB device that is mounted at the music directory
+        
+        Returns:
+            Device path (e.g., '/dev/sda1') or None if not found
+        """
+        try:
+            # Use findmnt to find what device is mounted at our mount point
+            result = subprocess.run(
+                ['findmnt', '-n', '-o', 'SOURCE', self.music_directory],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            
+            if result.returncode == 0 and result.stdout.strip():
+                device = result.stdout.strip()
+                print(f"Found USB device: {device}")
+                return device
+            
+            # Alternative method: check /proc/mounts
+            with open('/proc/mounts', 'r') as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) >= 2 and parts[1] == self.music_directory:
+                        device = parts[0]
+                        print(f"Found USB device: {device}")
+                        return device
+        except Exception as e:
+            print(f"Error finding USB device: {e}")
+        
+        return None
+    
+    def eject_usb(self) -> bool:
+        """
+        Safely eject the USB drive
+        
+        Returns:
+            True if ejection was successful, False otherwise
+        """
+        if self.usb_ejected:
+            print("USB already ejected")
+            return True
+        
+        print("\n=== Ejecting USB Drive ===")
+        
+        # Stop playback first
+        if self.state != PlayerState.STOPPED:
+            print("Stopping playback...")
+            self.stop()
+        
+        # Clear playlist
+        self.playlist = []
+        self.current_index = 0
+        
+        # Find the USB device
+        device = self.find_usb_device()
+        
+        if not device:
+            print("No USB device found mounted at", self.music_directory)
+            self.usb_ejected = True
+            return True
+        
+        # Sync filesystem to ensure all writes are complete
+        print("Syncing filesystem...")
+        try:
+            subprocess.run(['sync'], check=False)
+            time.sleep(0.5)
+        except Exception as e:
+            print(f"Sync warning: {e}")
+        
+        # Unmount the device
+        print(f"Unmounting {device}...")
+        try:
+            result = subprocess.run(
+                ['sudo', 'umount', self.music_directory],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            
+            if result.returncode == 0:
+                print(f"✓ Successfully unmounted {device}")
+                self.usb_ejected = True
+                
+                # Update display to show ejected state
+                if self.display:
+                    self.display.update_now_playing(
+                        "USB EJECTED - Safe to Remove",
+                        state="EJECTED",
+                        volume=self.volume,
+                        current_index=0,
+                        total_tracks=0
+                    )
+                
+                return True
+            else:
+                print(f"✗ Failed to unmount: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            print(f"✗ Unmount error: {e}")
+            return False
+    
+    def check_uhubctl_available(self) -> bool:
+        """Check if uhubctl is available for USB power control"""
+        try:
+            result = subprocess.run(
+                ['which', 'uhubctl'],
+                capture_output=True,
+                check=False
+            )
+            return result.returncode == 0
+        except:
+            return False
+    
+    def toggle_usb_power(self, enable: bool) -> bool:
+        """
+        Toggle USB port power (requires uhubctl)
+        
+        Args:
+            enable: True to enable power, False to disable
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.check_uhubctl_available():
+            print("Note: uhubctl not available for USB power control")
+            print("Install with: sudo apt-get install uhubctl")
+            return False
+        
+        action = "on" if enable else "off"
+        print(f"Turning USB power {action}...")
+        
+        try:
+            # Try to control all USB ports
+            # Note: This may require sudo permissions and specific hub support
+            result = subprocess.run(
+                ['sudo', 'uhubctl', '-a', action],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            
+            if result.returncode == 0:
+                print(f"✓ USB power turned {action}")
+                self.usb_power_enabled = enable
+                return True
+            else:
+                print(f"✗ Failed to control USB power: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            print(f"✗ USB power control error: {e}")
+            return False
+    
+    def reenable_usb(self):
+        """Re-enable USB after ejection"""
+        if not self.usb_ejected:
+            print("USB not ejected, nothing to re-enable")
+            return
+        
+        print("\n=== Re-enabling USB ===")
+        
+        # If we disabled USB power, re-enable it
+        if not self.usb_power_enabled:
+            self.toggle_usb_power(True)
+            time.sleep(2)  # Wait for USB device to be recognized
+        
+        # Reset ejection flag
+        self.usb_ejected = False
+        print("✓ USB re-enabled - will auto-mount when device is connected")
+        
+        # Update display
+        if self.display:
+            self.display.update_now_playing(
+                "Waiting for USB...",
+                state="WAITING",
+                volume=self.volume,
+                current_index=0,
+                total_tracks=0
+            )
 
 def main():
     """Main entry point"""

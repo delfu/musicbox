@@ -11,7 +11,9 @@ A complete stereo music player for Raspberry Pi using MAX98357A I2S amplifiers w
 - **True Stereo Output** - Separate left/right channels using two MAX98357A amplifiers
 - **Physical Controls** - Buttons for play/pause, next/previous, and rotary encoder for volume
 - **USB Music Library** - Plays MP3 files from USB drive
+- **Safe USB Eject** - Safely unmount USB drive with encoder button press
 - **Auto-start** - Optional systemd service for headless operation
+- **Auto-mount** - Automatic USB detection and playback
 - **No DAC Required** - Direct I2S digital audio output
 
 ## Hardware Requirements
@@ -52,7 +54,7 @@ A complete stereo music player for Raspberry Pi using MAX98357A I2S amplifiers w
 | 15 | GPIO 22 | Button → GND | Previous Track |
 | 29 | GPIO 5 | Encoder A | Volume Control |
 | 31 | GPIO 6 | Encoder B | Volume Control |
-| 33 | GPIO 13 | Encoder SW → GND | Reset Volume |
+| 33 | GPIO 13 | Encoder SW → GND | USB Eject/Re-enable |
 
 ## Quick Start
 
@@ -117,7 +119,7 @@ The player offers three modes:
 - **Next Button**: Skip to next track
 - **Previous Button**: Go to previous track
 - **Rotate Encoder**: Adjust volume (2% per detent)
-- **Press Encoder**: Reset volume to 80%
+- **Press Encoder**: Safely eject USB drive (press again to re-enable)
 
 ### Keyboard Controls (Interactive Mode)
 - `n` - Next song
@@ -128,6 +130,41 @@ The player offers three modes:
 - `-` - Volume down
 - `1-9` - Play song by number
 - `q` - Quit
+
+## USB Safe Eject Feature
+
+The encoder button provides safe USB ejection functionality:
+
+### How to Use
+1. **While playing music**, press the encoder button
+2. System will:
+   - Stop playback immediately
+   - Sync filesystem (flush all writes)
+   - Safely unmount the USB drive
+   - Display "USB EJECTED - Safe to Remove"
+   - (Optional) Cut USB power if `uhubctl` is available
+3. **Remove the USB drive** - It's now safe to unplug
+4. **Press encoder button again** to re-enable USB
+5. **Reconnect USB drive** - System will auto-mount and start playing
+
+### Benefits
+- **No data corruption** - Proper unmount ensures all writes complete
+- **Physical safety** - Optional USB power cutoff
+- **User control** - Manually control when USB can be accessed
+- **Automatic recovery** - Easy re-enable and auto-mount
+
+### Technical Details
+See [USB_EJECT_FEATURE.md](USB_EJECT_FEATURE.md) for full documentation on:
+- Implementation details
+- USB power control with `uhubctl`
+- Troubleshooting
+- Testing procedures
+
+### Testing
+```bash
+# Test USB eject functionality
+./test_usb_eject.py
+```
 
 ## Auto-Start on Boot
 

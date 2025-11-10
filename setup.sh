@@ -261,6 +261,42 @@ EOF
     log_info "GPIO permissions configured!"
 }
 
+# Setup USB eject permissions
+setup_usb_eject_permissions() {
+    log_info "Setting up USB eject permissions..."
+    
+    # Allow user to unmount USB drives without password
+    # This is required for the USB eject feature
+    SUDOERS_FILE="/etc/sudoers.d/music-player-usb"
+    
+    sudo tee $SUDOERS_FILE > /dev/null << EOF
+# Allow music player to safely eject USB drives
+$USER ALL=(ALL) NOPASSWD: /bin/umount
+$USER ALL=(ALL) NOPASSWD: /usr/bin/uhubctl
+EOF
+    
+    # Set proper permissions for sudoers file
+    sudo chmod 0440 $SUDOERS_FILE
+    
+    # Validate sudoers file
+    if sudo visudo -c -f $SUDOERS_FILE; then
+        log_info "USB eject permissions configured successfully!"
+    else
+        log_error "Failed to configure USB eject permissions"
+        sudo rm -f $SUDOERS_FILE
+        return 1
+    fi
+    
+    # Try to install uhubctl for USB power control (optional)
+    log_info "Installing uhubctl for USB power control (optional)..."
+    if sudo apt-get install -y uhubctl 2>/dev/null; then
+        log_info "uhubctl installed - USB power control available"
+    else
+        log_warn "uhubctl installation failed - USB power control not available"
+        log_warn "This is optional - USB eject will still work without it"
+    fi
+}
+
 # Create systemd service for auto-start
 # TODO: this needs testing so it's disabled from the script
 create_systemd_service() {
@@ -344,7 +380,14 @@ print_summary() {
     echo "    - GPIO 22 → Previous button"
     echo "    - GPIO 5  → Encoder A"
     echo "    - GPIO 6  → Encoder B"
-    echo "    - GPIO 13 → Encoder button"
+    echo "    - GPIO 13 → Encoder button (USB Eject)"
+    echo
+    echo "Features:"
+    echo "  • Auto-play when USB is connected"
+    echo "  • Volume control with rotary encoder"
+    echo "  • USB safe eject via encoder button press"
+    echo "  • Press encoder again to re-enable USB"
+    echo "  • See USB_EJECT_FEATURE.md for details"
     echo
     echo "========================================="
 }
@@ -373,6 +416,7 @@ main() {
     configure_alsa 
     setup_usb_mount
     setup_gpio_permissions
+    setup_usb_eject_permissions
     create_systemd_service # this needs more thoughts so it's disabled for now
     configure_test_scripts
     print_summary
