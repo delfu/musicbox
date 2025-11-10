@@ -184,22 +184,32 @@ class MusicPlayer:
             self.current_index = (self.current_index - 1) % len(self.playlist)
             self.play_file(self.playlist[self.current_index])
     
-    def load_playlist(self):
-        """Load all MP3 files from /mnt/usbdrive into playlist"""
-        print(f"Loading music from: {self.music_directory}")
+    def load_playlist(self, quiet: bool = False):
+        """Load all MP3 files from /mnt/usbdrive into playlist
+        
+        Args:
+            quiet: If True, suppress output messages
+            
+        Returns:
+            True if playlist was loaded, False otherwise
+        """
+        if not quiet:
+            print(f"Loading music from: {self.music_directory}")
         
         # Find all MP3 files
         self.playlist = self.find_music_files()
         
         if not self.playlist:
-            print(f"No MP3 files found in {self.music_directory}")
+            if not quiet:
+                print(f"No MP3 files found in {self.music_directory}")
             return False
         
-        print(f"Found {len(self.playlist)} MP3 files")
-        for i, song in enumerate(self.playlist[:5], 1):  # Show first 5
-            print(f"  {i}. {os.path.basename(song)}")
-        if len(self.playlist) > 5:
-            print(f"  ... and {len(self.playlist) - 5} more")
+        if not quiet:
+            print(f"Found {len(self.playlist)} MP3 files")
+            for i, song in enumerate(self.playlist[:5], 1):  # Show first 5
+                print(f"  {i}. {os.path.basename(song)}")
+            if len(self.playlist) > 5:
+                print(f"  ... and {len(self.playlist) - 5} more")
         
         return True
     
@@ -300,6 +310,67 @@ class MusicPlayer:
             else:
                 print(f"    {i}. {name}")
         print("================\n")
+    
+    def is_media_available(self) -> bool:
+        """Check if media is available at the music directory
+        
+        Returns:
+            True if the directory exists and has MP3 files, False otherwise
+        """
+        if not os.path.exists(self.music_directory):
+            return False
+        
+        # Quick check for any MP3 files
+        try:
+            for root, dirs, files in os.walk(self.music_directory):
+                for file in files:
+                    if file.lower().endswith('.mp3') and not file.lower().startswith("._"):
+                        return True
+        except:
+            return False
+        
+        return False
+    
+    def wait_for_media_and_play(self, check_interval: float = 2.0):
+        """Monitor for media availability and auto-play when detected
+        
+        Args:
+            check_interval: How often to check for media (in seconds)
+        """
+        print("\nWaiting for media...")
+        print(f"Monitoring: {self.music_directory}")
+        print("Player will auto-start when media is connected")
+        print("Press Ctrl+C to exit\n")
+        
+        media_was_available = False
+        
+        while self.running:
+            media_available = self.is_media_available()
+            
+            # Media just became available
+            if media_available and not media_was_available:
+                print(f"\n✓ Media detected at {self.music_directory}!")
+                if self.load_playlist():
+                    print("Starting playback...")
+                    self.play_file(self.playlist[0])
+                    media_was_available = True
+            
+            # Media was removed
+            elif not media_available and media_was_available:
+                print(f"\n✗ Media removed from {self.music_directory}")
+                print("Stopping playback...")
+                self.stop()
+                self.playlist = []
+                self.current_index = 0
+                media_was_available = False
+                print("Waiting for media to be reconnected...")
+            
+            # Media is available and we're playing - check if track finished
+            elif media_available and media_was_available:
+                if not self.is_process_running() and self.state == PlayerState.PLAYING:
+                    self.play_next()
+            
+            time.sleep(check_interval)
     
     def cleanup(self, signum=None, frame=None):
         """Clean up on exit"""
@@ -417,9 +488,11 @@ def main():
                     prog='MusicPlayer',
                     description='A Raspberrypi based music player')
     parser.add_argument('-i', '--interactive', help='load up in interactive mode, using keyboard', action=argparse.BooleanOptionalAction)
+    parser.add_argument('--no-wait', help='exit if no media found (old behavior)', action='store_true')
     args = parser.parse_args()
 
     keyboard_mode = args.interactive
+    no_wait_mode = args.no_wait
 
     # Check if running on Raspberry Pi
     is_pi = os.path.exists('/proc/device-tree/model')
@@ -433,8 +506,11 @@ def main():
     if is_pi and GPIO_AVAILABLE:
         player.setup_gpio_controls()
     
-    # Load playlist from USB
-    if not player.load_playlist():
+    # Try to load playlist from USB
+    playlist_loaded = player.load_playlist()
+    
+    # If no playlist and no-wait mode, exit with error message
+    if not playlist_loaded and no_wait_mode:
         print("\nNo music found. Make sure:")
         print("  1. USB drive is connected")
         print("  2. Drive is mounted at /mnt/usbdrive")
@@ -446,19 +522,41 @@ def main():
      
     try:
         if keyboard_mode:
+            # Interactive mode requires playlist upfront
+            if not playlist_loaded:
+                print("\nNo media found for interactive mode")
+                print("Waiting for media to be connected...")
+                while not player.load_playlist(quiet=True):
+                    time.sleep(2)
+                print("Media detected! Starting interactive mode...")
             player.interactive_mode()
         elif GPIO_AVAILABLE:
             print("\nPhysical control mode active")
             print("Use buttons/knobs to control playback")
             print("Press Ctrl+C to exit\n")
-            player.play_file(player.playlist[0])
-            # Keep running
-            while True:
-                if not player.is_process_running() and player.state == PlayerState.PLAYING:
-                    player.play_next()
-                time.sleep(0.5)
+            
+            if playlist_loaded:
+                # Start playing immediately if media is available
+                player.play_file(player.playlist[0])
+                # Keep running and monitor for track changes
+                while True:
+                    if not player.is_process_running() and player.state == PlayerState.PLAYING:
+                        player.play_next()
+                    time.sleep(0.5)
+            else:
+                # Wait for media to be connected, then auto-play
+                player.wait_for_media_and_play()
         else:
-            print("Invalid choice")
+            # No GPIO, no interactive mode
+            if playlist_loaded:
+                print("\nNo control mode selected, starting playback...")
+                player.play_file(player.playlist[0])
+                while True:
+                    if not player.is_process_running() and player.state == PlayerState.PLAYING:
+                        player.play_next()
+                    time.sleep(0.5)
+            else:
+                player.wait_for_media_and_play()
     except KeyboardInterrupt:
         pass
     finally:
