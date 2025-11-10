@@ -373,7 +373,7 @@ main() {
     configure_alsa 
     setup_usb_mount
     setup_gpio_permissions
-    # create_systemd_service # this needs more thoughts so it's disabled for now
+    create_systemd_service # this needs more thoughts so it's disabled for now
     configure_test_scripts
     print_summary
     
