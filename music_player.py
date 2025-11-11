@@ -91,7 +91,7 @@ class MusicPlayer:
         # Search for MP3 files
         for root, dirs, files in os.walk(self.music_directory):
             for file in files:
-                if file.lower().endswith('.mp3') and not file.lower().startswith("._"):
+                if file.lower().endswith('.mp3') and not file.startswith("."):
                     full_path = os.path.join(root, file)
                     mp3_files.append(full_path)
                     
