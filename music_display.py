@@ -45,30 +45,39 @@ class MusicDisplay:
         self.image = Image.new("RGB", (self.width, self.height))
         self.draw = ImageDraw.Draw(self.image)
         
-        # Load fonts
+        # Load fonts with better hierarchy
         try:
-            self.font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
-            self.font_medium = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18)
-            self.font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
+            self.font_splash = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
+            self.font_splash_sub = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18)
+            self.font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 22)
+            self.font_subtitle = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 16)
+            self.font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
         except:
             # Fallback to default font
-            self.font_large = ImageFont.load_default()
-            self.font_medium = ImageFont.load_default()
+            self.font_splash = ImageFont.load_default()
+            self.font_splash_sub = ImageFont.load_default()
+            self.font_title = ImageFont.load_default()
+            self.font_subtitle = ImageFont.load_default()
             self.font_small = ImageFont.load_default()
             
-        # Colors
+        # Modern color palette
         self.BLACK = (0, 0, 0)
+        self.DARK_BG = (20, 25, 35)  # Dark blue-gray background
         self.WHITE = (255, 255, 255)
-        self.BLUE = (0, 0, 255)
-        self.GREEN = (0, 255, 0)
-        self.RED = (255, 0, 0)
+        self.BLUE = (0, 122, 255)  # Modern iOS-style blue
+        self.GREEN = (52, 199, 89)  # Modern green
+        self.RED = (255, 59, 48)  # Modern red
+        self.GRAY = (142, 142, 147)  # Subtle gray for secondary text
+        self.VOLUME_BAR_BG = (60, 65, 75)  # Dark gray for volume bar background
         
         # Clear display
         self.clear()
         
-    def clear(self):
+    def clear(self, color=None):
         """Clear the display"""
-        self.draw.rectangle((0, 0, self.width, self.height), fill=self.BLACK)
+        if color is None:
+            color = self.DARK_BG
+        self.draw.rectangle((0, 0, self.width, self.height), fill=color)
         self.display.image(self.image)
     
     def cleanup(self):
@@ -78,80 +87,232 @@ class MusicDisplay:
             print("Screen failed to clear")
         
     def show_splash(self):
-        """Show splash screen"""
+        """Show modern splash screen"""
         self.clear()
-        self.draw.text((self.width//2 - 60, self.height//2 - 20), 
-                      "Music Box", font=self.font_large, fill=self.WHITE)
-        self.draw.text((self.width//2 - 40, self.height//2 + 10), 
-                      "Loading...", font=self.font_medium, fill=self.BLUE)
+        
+        # Main title - centered
+        title = "MusicBox"
+        # Get text bounding box for centering
+        bbox = self.draw.textbbox((0, 0), title, font=self.font_splash)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        x = (self.width - text_width) // 2
+        y = self.height // 2 - 40
+        self.draw.text((x, y), title, font=self.font_splash, fill=self.WHITE)
+        
+        # Subtitle message
+        subtitle = "Connect USB Drive"
+        bbox = self.draw.textbbox((0, 0), subtitle, font=self.font_splash_sub)
+        text_width = bbox[2] - bbox[0]
+        x = (self.width - text_width) // 2
+        y = self.height // 2 + 20
+        self.draw.text((x, y), subtitle, font=self.font_splash_sub, fill=self.GRAY)
+        
+        # Small instruction
+        instruction = "Insert media to begin"
+        bbox = self.draw.textbbox((0, 0), instruction, font=self.font_small)
+        text_width = bbox[2] - bbox[0]
+        x = (self.width - text_width) // 2
+        y = self.height // 2 + 50
+        self.draw.text((x, y), instruction, font=self.font_small, fill=self.GRAY)
+        
         self.display.image(self.image)
         
     def update_now_playing(self, filename, state="PLAYING", volume=80, 
                            current_index=0, total_tracks=0):
         """
-        Update the now playing screen
+        Update the now playing screen with modern design
         
         Args:
             filename: Current song filename
             state: Player state (PLAYING, PAUSED, STOPPED)
-            volume: Current volume percentage
+            volume: Current volume percentage (0-100)
             current_index: Current track number
             total_tracks: Total number of tracks
         """
         self.clear()
-
-        # fetch album art
+        
+        # Volume bar area (right edge, 30px wide)
+        volume_bar_width = 30
+        main_content_width = self.width - volume_bar_width
+        
+        # Draw vertical volume bar on the right edge
+        self._draw_vertical_volume_bar(volume, volume_bar_width)
+        
+        # Extract song and album info from metadata
+        song_name, album_name = self._extract_metadata(filename)
+        
+        # Fetch and display large album art
+        artwork_size = 200  # Larger album art
+        artwork_x = (main_content_width - artwork_size) // 2
+        artwork_y = 20
+        
         if state == "PLAYING" or state == "PAUSED":
-            self.paste_album_art(filename)
+            has_art = self.paste_album_art(filename, artwork_x, artwork_y, artwork_size)
+            if not has_art:
+                # Draw placeholder if no album art
+                self._draw_album_art_placeholder(artwork_x, artwork_y, artwork_size)
+        else:
+            self._draw_album_art_placeholder(artwork_x, artwork_y, artwork_size)
         
-        # Extract song name without path and extension
-        song_name = filename.split('/')[-1].rsplit('.', 1)[0]
+        # Song title (below album art)
+        title_y = artwork_y + artwork_size + 15
+        self._draw_centered_text(song_name, title_y, self.font_title, 
+                                self.WHITE, max_width=main_content_width - 20)
         
-        # Truncate long names
-        if len(song_name) > 25:
-            song_name = song_name[:22] + "..."
-            
-        # Draw UI elements
-        # Title bar
-        self.draw.rectangle((0, 0, self.width, 30), fill=self.BLUE)
-        self.draw.text((10, 5), "Now Playing", font=self.font_medium, fill=self.WHITE)
-        
-        # Track info
-        track_info = f"Track {current_index + 1}/{total_tracks}"
-        self.draw.text((self.width - 80, 7), track_info, font=self.font_small, fill=self.WHITE)
-        
-        # Song name
-        self.draw.text((10, 50), song_name, font=self.font_medium, fill=self.WHITE)
-        
-        # State indicator
-        state_color = self.GREEN if state == "PLAYING" else self.RED if state == "PAUSED" else self.WHITE
-        state_text = "▶" if state == "PLAYING" else "⏸" if state == "PAUSED" else "■"
-        self.draw.text((10, 90), state_text, font=self.font_large, fill=state_color)
-        self.draw.text((40, 95), state.title(), font=self.font_medium, fill=self.WHITE)
-        
-        # Volume bar
-        self.draw.text((10, 130), f"Volume: {volume}%", font=self.font_small, fill=self.WHITE)
-        # Draw volume bar background
-        self.draw.rectangle((10, 150, 310, 165), outline=self.WHITE)
-        # Draw volume bar fill
-        vol_width = int((volume / 100) * 300)
-        self.draw.rectangle((10, 150, 10 + vol_width, 165), fill=self.GREEN)
-        
-        # Control hints at bottom
-        self.draw.text((10, 200), "Play/Pause | Next | Prev | Volume", 
-                      font=self.font_small, fill=(128, 128, 128))
-        
+        # Album name (below song title, smaller and gray)
+        album_y = title_y + 28
+        self._draw_centered_text(album_name, album_y, self.font_subtitle, 
+                                self.GRAY, max_width=main_content_width - 20)
         
         # Update display
         self.display.image(self.image)
+    
+    def _draw_vertical_volume_bar(self, volume, bar_width):
+        """
+        Draw vertical volume bar with 10 segments on the right edge
         
-    def paste_album_art(self, mp3_file):
+        Args:
+            volume: Volume percentage (0-100)
+            bar_width: Width of the volume bar area
+        """
+        bar_x = self.width - bar_width
+        bar_height = 200  # Total height for volume indicators
+        bar_y = (self.height - bar_height) // 2
+        
+        # Number of segments (0-10)
+        num_segments = 10
+        segment_height = 15
+        segment_gap = 5
+        segment_width = bar_width - 10
+        
+        # Calculate how many segments should be filled
+        filled_segments = int((volume / 100) * num_segments)
+        
+        # Draw each segment (from bottom to top)
+        for i in range(num_segments):
+            segment_index = num_segments - i - 1  # Bottom is 0, top is 9
+            seg_y = bar_y + bar_height - (i + 1) * (segment_height + segment_gap)
+            seg_x = bar_x + 5
+            
+            # Determine if this segment should be filled
+            if segment_index < filled_segments:
+                # Filled segment - use green
+                self.draw.rectangle(
+                    (seg_x, seg_y, seg_x + segment_width, seg_y + segment_height),
+                    fill=self.GREEN
+                )
+            else:
+                # Empty segment - use dark background
+                self.draw.rectangle(
+                    (seg_x, seg_y, seg_x + segment_width, seg_y + segment_height),
+                    fill=self.VOLUME_BAR_BG
+                )
+    
+    def _draw_centered_text(self, text, y, font, color, max_width=None):
+        """
+        Draw text centered horizontally, with optional truncation
+        
+        Args:
+            text: Text to draw
+            y: Y coordinate
+            font: Font to use
+            color: Text color
+            max_width: Maximum width before truncation
+        """
+        # Truncate if needed
+        if max_width:
+            bbox = self.draw.textbbox((0, 0), text, font=font)
+            text_width = bbox[2] - bbox[0]
+            if text_width > max_width:
+                # Truncate and add ellipsis
+                while text_width > max_width and len(text) > 3:
+                    text = text[:-1]
+                    bbox = self.draw.textbbox((0, 0), text + "...", font=font)
+                    text_width = bbox[2] - bbox[0]
+                text = text + "..."
+        
+        # Center the text (accounting for volume bar)
+        volume_bar_width = 30
+        content_width = self.width - volume_bar_width
+        bbox = self.draw.textbbox((0, 0), text, font=font)
+        text_width = bbox[2] - bbox[0]
+        x = (content_width - text_width) // 2
+        
+        self.draw.text((x, y), text, font=font, fill=color)
+    
+    def _draw_album_art_placeholder(self, x, y, size):
+        """
+        Draw a placeholder when no album art is available
+        
+        Args:
+            x, y: Top-left coordinates
+            size: Size of the square placeholder
+        """
+        # Dark gray rounded rectangle
+        self.draw.rectangle((x, y, x + size, y + size), fill=self.VOLUME_BAR_BG)
+        
+        # Draw a music note symbol in the center
+        note_text = "♪"
+        bbox = self.draw.textbbox((0, 0), note_text, font=self.font_splash)
+        note_width = bbox[2] - bbox[0]
+        note_height = bbox[3] - bbox[1]
+        note_x = x + (size - note_width) // 2
+        note_y = y + (size - note_height) // 2
+        self.draw.text((note_x, note_y), note_text, font=self.font_splash, fill=self.GRAY)
+    
+    def _extract_metadata(self, filename):
+        """
+        Extract song name and album from MP3 metadata
+        
+        Args:
+            filename: Path to MP3 file
+            
+        Returns:
+            Tuple of (song_name, album_name)
+        """
+        song_name = "Unknown Track"
+        album_name = "Unknown Album"
+        
+        try:
+            audio = MP3(filename)
+            
+            # Try to get title from ID3 tags
+            if 'TIT2' in audio:
+                song_name = str(audio['TIT2'])
+            else:
+                # Fallback to filename
+                song_name = filename.split('/')[-1].rsplit('.', 1)[0]
+            
+            # Try to get album from ID3 tags
+            if 'TALB' in audio:
+                album_name = str(audio['TALB'])
+        except:
+            # Fallback to filename
+            song_name = filename.split('/')[-1].rsplit('.', 1)[0]
+        
+        return song_name, album_name
+        
+    def paste_album_art(self, mp3_file, x=None, y=None, size=None):
         """
         Extract and display album art from MP3 file
         
         Args:
             mp3_file: Path to MP3 file
+            x: X position (default: centered)
+            y: Y position (default: 40)
+            size: Size of the square artwork (default: 200)
+        
+        Returns:
+            True if album art was found and displayed, False otherwise
         """
+        if size is None:
+            size = 200
+        if x is None:
+            x = (self.width - 30 - size) // 2  # Account for volume bar
+        if y is None:
+            y = 20
+            
         try:
             audio = ID3(mp3_file)
             
@@ -161,11 +322,11 @@ class MusicDisplay:
                     # Load image from tag data
                     artwork = Image.open(io.BytesIO(tag.data))
                     
-                    # Resize to fit display (leaving room for controls)
-                    artwork = artwork.resize((160, 160), Image.LANCZOS)
+                    # Resize to fit display
+                    artwork = artwork.resize((size, size), Image.LANCZOS)
                     
                     # Paste onto display image
-                    self.image.paste(artwork, (self.width - 170, 40))
+                    self.image.paste(artwork, (x, y))
                     return True
         except:
             pass
