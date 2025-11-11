@@ -20,7 +20,7 @@ class MusicDisplay:
         """
         # Volume bar visibility tracking
         self.last_volume_change_time = 0
-        self.volume_display_duration = 2.0  # Show volume bar for 2 seconds
+        self.volume_display_duration = 3.0  # Show volume bar for 3 seconds
         
         # Configuration for display
         # CS pin will be tied to GND and is always active. tying it to CE0 causes GPIO busy, im not sure why
@@ -53,8 +53,8 @@ class MusicDisplay:
         try:
             self.font_splash = ImageFont.truetype("/home/pi/.fonts/InterVariable.ttf", 40)
             self.font_splash_sub = ImageFont.truetype("/home/pi/.fonts/InterVariable.ttf", 18)
-            self.font_title = ImageFont.truetype("/home/pi/.fonts/InterVariable.ttf", 48)  # Bigger and bold
-            self.font_subtitle = ImageFont.truetype("/home/pi/.fonts/InterVariable.ttf", 24)
+            self.font_title = ImageFont.truetype("/home/pi/.fonts/InterVariable.ttf", 24)  # Bigger and bold
+            self.font_subtitle = ImageFont.truetype("/home/pi/.fonts/InterVariable.ttf", 18)
             self.font_small = ImageFont.truetype("/home/pi/.fonts/InterVariable.ttf", 12)
         except:
             print("Failed to load fonts, using default")
@@ -168,16 +168,63 @@ class MusicDisplay:
         # Song title (below album art) - left aligned
         title_y = artwork_y + artwork_size + 10
         text_x = 50  # Left margin
+        text_max_width = main_content_width - text_x - 10  # Account for left margin + right padding
         self._draw_text_with_truncate(song_name, text_x, title_y, self.font_title, 
-                                      self.WHITE, max_width=main_content_width - 20)
+                                      self.WHITE, max_width=text_max_width)
         
         # Album name (below song title, smaller and gray) - left aligned
         album_y = title_y + 30
         self._draw_text_with_truncate(album_name, text_x, album_y, self.font_subtitle, 
-                                      self.GRAY, max_width=main_content_width - 20)
+                                      self.GRAY, max_width=text_max_width)
+        
+        # Draw pause overlay if paused
+        if state == "PAUSED":
+            self._draw_pause_overlay()
         
         # Update display
         self.display.image(self.image)
+    
+    def _draw_pause_overlay(self):
+        """
+        Draw a semi-transparent pause overlay with pause icon
+        """
+        # Create a semi-transparent white overlay using PIL
+        overlay = Image.new('RGBA', (self.width, self.height), (255, 255, 255, 64))  # 25% opacity
+        
+        # Convert base image to RGBA for blending
+        base = self.image.convert('RGBA')
+        
+        # Composite the overlay
+        composited = Image.alpha_composite(base, overlay)
+        
+        # Convert back to RGB
+        self.image = composited.convert('RGB')
+        self.draw = ImageDraw.Draw(self.image)
+        
+        # Draw pause icon (two vertical bars) in center
+        icon_width = 60
+        icon_height = 80
+        bar_width = 18
+        gap = 14
+        
+        center_x = self.width // 2
+        center_y = self.height // 2
+        
+        # Left bar
+        left_bar_x = center_x - gap // 2 - bar_width
+        self.draw.rectangle(
+            (left_bar_x, center_y - icon_height // 2, 
+             left_bar_x + bar_width, center_y + icon_height // 2),
+            fill=self.WHITE
+        )
+        
+        # Right bar
+        right_bar_x = center_x + gap // 2
+        self.draw.rectangle(
+            (right_bar_x, center_y - icon_height // 2,
+             right_bar_x + bar_width, center_y + icon_height // 2),
+            fill=self.WHITE
+        )
     
     def notify_volume_change(self):
         """

@@ -244,6 +244,9 @@ class MusicPlayer:
             # Wait for current song to finish
             while self.is_process_running():
                 time.sleep(0.5)
+                # Periodically update display (to refresh volume bar state)
+                if self.display and self.display.last_volume_change_time > 0:
+                    self.update_display()
             
             # Small gap between songs
             time.sleep(0.5)
