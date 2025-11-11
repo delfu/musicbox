@@ -51,12 +51,13 @@ class MusicDisplay:
         
         # Load fonts with better hierarchy
         try:
-            self.font_splash = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
-            self.font_splash_sub = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18)
-            self.font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 48)  # Bigger and bold
-            self.font_subtitle = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
-            self.font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
+            self.font_splash = ImageFont.truetype("/home/pi/.fonts/InterVariable.ttf", 40)
+            self.font_splash_sub = ImageFont.truetype("/home/pi/.fonts/InterVariable.ttf", 18)
+            self.font_title = ImageFont.truetype("/home/pi/.fonts/InterVariable.ttf", 48)  # Bigger and bold
+            self.font_subtitle = ImageFont.truetype("/home/pi/.fonts/InterVariable.ttf", 24)
+            self.font_small = ImageFont.truetype("/home/pi/.fonts/InterVariable.ttf", 12)
         except:
+            print("Failed to load fonts, using default")
             # Fallback to default font
             self.font_splash = ImageFont.load_default()
             self.font_splash_sub = ImageFont.load_default()
