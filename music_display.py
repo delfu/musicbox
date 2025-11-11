@@ -22,6 +22,7 @@ class MusicDisplay:
         self.last_volume_change_time = 0
         self.volume_display_duration = 3.0  # Show volume bar for 3 seconds
         self.refresh_callback = None  # Callback to trigger display refresh
+        self.refresh_timer = None  # Track active refresh timer
         
         # Cached song data (updated by update_song())
         self.current_song_name = ""
@@ -262,10 +263,10 @@ class MusicDisplay:
             radius: Corner radius in pixels (default: 5)
         """
         try:
-            # Create overlay with 10% opacity black
+            # Create overlay with 50% opacity black
             overlay = Image.new('RGBA', (self.width, self.height), (0, 0, 0, 0))
             overlay_draw = ImageDraw.Draw(overlay)
-            overlay_draw.rounded_rectangle((x1, y1, x2, y2), radius=radius, fill=(0, 0, 0, 26))  # 10% opacity = 26/255
+            overlay_draw.rounded_rectangle((x1, y1, x2, y2), radius=radius, fill=(0, 0, 0, 128))  # 50% opacity = 128/255
             
             # Convert base image to RGBA for blending
             base = self.image.convert('RGBA')
@@ -334,21 +335,28 @@ class MusicDisplay:
     def notify_volume_change(self):
         """
         Call this method when volume is changed to trigger display of volume bar
-        Also schedules a refresh after the timeout period
+        Also schedules a refresh after the timeout period (cancels previous timer)
         """
         self.last_volume_change_time = time.time()
+        
+        # Cancel any existing refresh timer
+        if self.refresh_timer is not None:
+            self.refresh_timer.cancel()
+            self.refresh_timer = None
         
         # Schedule a refresh after the volume bar should disappear
         if self.refresh_callback:
             import threading
+            
             def delayed_refresh():
-                time.sleep(self.volume_display_duration + 0.1)  # Wait slightly longer than timeout
                 if self.refresh_callback:
                     self.refresh_callback()
+                self.refresh_timer = None
             
-            # Start thread to trigger refresh after delay
-            refresh_thread = threading.Thread(target=delayed_refresh, daemon=True)
-            refresh_thread.start()
+            # Create and start new timer
+            self.refresh_timer = threading.Timer(self.volume_display_duration + 0.1, delayed_refresh)
+            self.refresh_timer.daemon = True
+            self.refresh_timer.start()
     
     def _should_show_volume_bar(self):
         """
