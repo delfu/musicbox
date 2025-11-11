@@ -190,6 +190,9 @@ class MusicPlayer:
     def play_next(self):
         """Play next song in playlist"""
         if self.playlist:
+            # Check if we just finished playing a secret track
+            self._handle_secret_track_completion()
+            
             self.current_index = (self.current_index + 1) % len(self.playlist)
             self.play_file(self.playlist[self.current_index])
     
@@ -218,6 +221,9 @@ class MusicPlayer:
             if not quiet:
                 print(f"No MP3 files found in {self.music_directory}")
             return False
+        
+        # Apply secret.mp3 reordering if present
+        self._reorder_secret_track()
         
         if not quiet:
             print(f"Found {len(self.playlist)} MP3 files")
@@ -404,6 +410,67 @@ class MusicPlayer:
             self.display.cleanup()
         # gpiozero handles cleanup automatically, no explicit cleanup needed
         sys.exit(0)
+    
+    # ==================== SECRET TRACK HANDLING ====================
+    
+    def _find_secret_track(self) -> Optional[int]:
+        """
+        Find the index of secret.mp3 in the playlist
+        
+        Returns:
+            Index of secret.mp3 or None if not found
+        """
+        for i, track in enumerate(self.playlist):
+            if os.path.basename(track).lower() == 'secret.mp3':
+                return i
+        return None
+    
+    def _reorder_secret_track(self):
+        """
+        If secret.mp3 exists in the playlist, move it to position 1 (second place)
+        """
+        secret_index = self._find_secret_track()
+        
+        if secret_index is None:
+            return
+        
+        # Only reorder if playlist has at least 2 tracks and secret is not already in position 1
+        if len(self.playlist) >= 2 and secret_index != 1:
+            secret_track = self.playlist.pop(secret_index)
+            self.playlist.insert(1, secret_track)
+            print(f"Moved secret.mp3 to position 2 in playlist")
+    
+    def _handle_secret_track_completion(self):
+        """
+        Check if the current track is secret.mp3 and rename it to .secret.mp3
+        """
+        if not self.playlist or self.current_index >= len(self.playlist):
+            return
+        
+        current_track = self.playlist[self.current_index]
+        
+        if os.path.basename(current_track).lower() == 'secret.mp3':
+            self._rename_secret_track(current_track)
+    
+    def _rename_secret_track(self, track_path: str):
+        """
+        Rename secret.mp3 to .secret.mp3
+        
+        Args:
+            track_path: Full path to the secret.mp3 file
+        """
+        try:
+            directory = os.path.dirname(track_path)
+            new_path = os.path.join(directory, '.secret.mp3')
+            
+            os.rename(track_path, new_path)
+            print(f"Renamed secret.mp3 to .secret.mp3 (hidden)")
+            
+            # Update the playlist entry
+            self.playlist[self.current_index] = new_path
+            
+        except Exception as e:
+            print(f"Warning: Could not rename secret.mp3: {e}")
     
     # ==================== GPIO CONTROL METHODS ====================
     
