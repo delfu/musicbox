@@ -26,6 +26,11 @@ class MusicDisplay:
         self.current_bg_color = None
         self.current_accent_color = None
         
+        # Cached song data (updated by update_song())
+        self.current_song_name = ""
+        self.current_album_name = ""
+        self.current_artwork = None
+        
         # Configuration for display
         # CS pin will be tied to GND and is always active. tying it to CE0 causes GPIO busy, im not sure why
         cs_pin = None# digitalio.DigitalInOut(board.CE0)
@@ -96,6 +101,46 @@ class MusicDisplay:
         except:
             print("Screen failed to clear")
         
+    def update_song(self, filename):
+        """
+        Update internal state when a new song starts playing.
+        This method performs expensive operations like loading album art and extracting colors.
+        Call this once per song, then call update_now_playing() for state changes.
+        
+        Args:
+            filename: Path to the MP3 file
+        """
+        # Extract song and album metadata
+        self.current_song_name, self.current_album_name = self._extract_metadata(filename)
+        
+        # Load album art and extract colors
+        artwork_image = None
+        try:
+            audio = ID3(filename)
+            
+            # Look for album art in APIC frames
+            for tag in audio.values():
+                if isinstance(tag, APIC):
+                    # Load image from tag data
+                    artwork_image = Image.open(io.BytesIO(tag.data))
+                    self.current_artwork = artwork_image
+                    
+                    # Extract dominant color from artwork
+                    self._extract_colors_from_artwork(artwork_image)
+                    break
+            
+            if not artwork_image:
+                # No album art found
+                self.current_artwork = None
+                self.current_bg_color = self.DARK_BG
+                self.current_accent_color = self.GREEN
+                
+        except Exception as e:
+            print(f"Error loading album art: {e}")
+            self.current_artwork = None
+            self.current_bg_color = self.DARK_BG
+            self.current_accent_color = self.GREEN
+    
     def show_splash(self):
         """Show modern splash screen"""
         self.clear()
@@ -154,44 +199,46 @@ class MusicDisplay:
         if show_volume:
             self._draw_vertical_volume_bar(volume, volume_bar_width)
         
-        # Extract song and album info from metadata
-        song_name, album_name = self._extract_metadata(filename)
+        # Use cached song metadata (should be set by update_song())
+        song_name = self.current_song_name if self.current_song_name else "Unknown Track"
+        album_name = self.current_album_name if self.current_album_name else "Unknown Album"
         
-        # Fetch and display large album art (centered in available space)
+        # Display album art (centered in available space)
         artwork_size = 160  # Album art size that leaves room for text
         artwork_x = (main_content_width - artwork_size) // 2
         artwork_y = 15
         
-        # Load album art and extract dominant color
-        artwork_image = None
         if state == "PLAYING" or state == "PAUSED":
-            has_art, artwork_image = self.paste_album_art(filename, artwork_x, artwork_y, artwork_size, return_image=True)
-            if has_art and artwork_image:
-                # Extract dominant color from album art
-                self._extract_colors_from_artwork(artwork_image)
-            if not has_art:
+            if self.current_artwork:
+                # Use cached artwork (already resized and color-extracted)
+                artwork_resized = self.current_artwork.resize((artwork_size, artwork_size), Image.LANCZOS)
+                self.image.paste(artwork_resized, (artwork_x, artwork_y))
+            else:
                 # Draw placeholder if no album art
                 self._draw_album_art_placeholder(artwork_x, artwork_y, artwork_size)
-                self.current_bg_color = self.DARK_BG  # Reset to default
-                self.current_accent_color = self.GREEN
         else:
             self._draw_album_art_placeholder(artwork_x, artwork_y, artwork_size)
-            self.current_bg_color = self.DARK_BG
-            self.current_accent_color = self.GREEN
         
         # Song title (below album art) - left aligned
         title_y = artwork_y + artwork_size + 10
-        text_x = 50  # Left margin
-        text_max_width = main_content_width - text_x - 10  # Account for left margin + right padding
         
-        # Draw text area background with 10% opacity black for readability
-        text_area_padding = 12
+        # Text box is fixed at 20px from left and right edges (accounting for volume bar)
+        text_box_margin = 20
+        text_area_x1 = text_box_margin
+        text_area_x2 = main_content_width - text_box_margin
+        
+        # Text padding inside the box
+        text_padding = 12
+        text_x = text_area_x1 + text_padding
+        text_max_width = text_area_x2 - text_x - text_padding
+        
+        # Calculate text box dimensions
         album_y = title_y + 30
-        text_area_x1 = text_x - text_area_padding
-        text_area_y1 = title_y - text_area_padding
-        text_area_x2 = main_content_width - 10
+        text_area_y1 = title_y - text_padding
         text_area_y2 = album_y + 25  # Height to cover both song and album text with padding
-        self._draw_text_background(text_area_x1, text_area_y1, text_area_x2, text_area_y2)
+        
+        # Draw text area background with 10% opacity black and rounded corners
+        self._draw_text_background(text_area_x1, text_area_y1, text_area_x2, text_area_y2, radius=5)
         
         # Now draw the text on top of the background
         self._draw_text_with_truncate(song_name, text_x, title_y, self.font_title, 
@@ -210,7 +257,7 @@ class MusicDisplay:
     
     def _extract_colors_from_artwork(self, artwork_image):
         """
-        Extract dominant color from album artwork for background
+        Extract most prominent (most frequent) color from album artwork for background
         
         Args:
             artwork_image: PIL Image object of the album art
@@ -222,41 +269,44 @@ class MusicDisplay:
             # Get all pixels
             pixels = list(small_image.getdata())
             
-            # Calculate average color with a bias towards darker/more saturated colors
-            # This gives a more aesthetically pleasing background
-            r_total = 0
-            g_total = 0
-            b_total = 0
-            count = 0
-            
+            # Count color frequency, ignoring very dark and very bright pixels
+            color_counts = {}
             for pixel in pixels:
                 if isinstance(pixel, tuple) and len(pixel) >= 3:
                     r, g, b = pixel[0], pixel[1], pixel[2]
-                    # Weight darker pixels more heavily
+                    
+                    # Skip very dark (< 30) and very bright (> 240) pixels
                     brightness = (r + g + b) / 3
-                    weight = 1.0 if brightness < 128 else 0.5
-                    r_total += r * weight
-                    g_total += g * weight
-                    b_total += b * weight
-                    count += weight
+                    if brightness < 30 or brightness > 240:
+                        continue
+                    
+                    # Round to nearest 8 to group similar colors
+                    r_rounded = (r // 8) * 8
+                    g_rounded = (g // 8) * 8
+                    b_rounded = (b // 8) * 8
+                    color_key = (r_rounded, g_rounded, b_rounded)
+                    
+                    color_counts[color_key] = color_counts.get(color_key, 0) + 1
             
-            if count > 0:
-                avg_r = int(r_total / count)
-                avg_g = int(g_total / count)
-                avg_b = int(b_total / count)
+            if color_counts:
+                # Find most frequent color
+                dominant_color = max(color_counts, key=color_counts.get)
+                dom_r, dom_g, dom_b = dominant_color
                 
                 # Darken the color for background (multiply by 0.4 to make it darker)
-                bg_r = int(avg_r * 0.4)
-                bg_g = int(avg_g * 0.4)
-                bg_b = int(avg_b * 0.4)
+                bg_r = int(dom_r * 0.4)
+                bg_g = int(dom_g * 0.4)
+                bg_b = int(dom_b * 0.4)
                 
                 self.current_bg_color = (bg_r, bg_g, bg_b)
                 
                 # Use slightly brighter version for accent (volume bar)
-                accent_r = min(255, int(avg_r * 0.8))
-                accent_g = min(255, int(avg_g * 0.8))
-                accent_b = min(255, int(avg_b * 0.8))
+                accent_r = min(255, int(dom_r * 0.8))
+                accent_g = min(255, int(dom_g * 0.8))
+                accent_b = min(255, int(dom_b * 0.8))
                 self.current_accent_color = (accent_r, accent_g, accent_b)
+                
+                print(f"Extracted prominent color: RGB{dominant_color} -> BG{self.current_bg_color}, Accent{self.current_accent_color}")
             else:
                 # Fallback to default colors
                 self.current_bg_color = self.DARK_BG
@@ -267,19 +317,20 @@ class MusicDisplay:
             self.current_bg_color = self.DARK_BG
             self.current_accent_color = self.GREEN
     
-    def _draw_text_background(self, x1, y1, x2, y2):
+    def _draw_text_background(self, x1, y1, x2, y2, radius=5):
         """
-        Draw a semi-transparent black background for text area
+        Draw a semi-transparent black background for text area with rounded corners
         
         Args:
             x1, y1: Top-left corner
             x2, y2: Bottom-right corner
+            radius: Corner radius in pixels (default: 5)
         """
         try:
             # Create overlay with 10% opacity black
             overlay = Image.new('RGBA', (self.width, self.height), (0, 0, 0, 0))
             overlay_draw = ImageDraw.Draw(overlay)
-            overlay_draw.rectangle((x1, y1, x2, y2), fill=(0, 0, 0, 26))  # 10% opacity = 26/255
+            overlay_draw.rounded_rectangle((x1, y1, x2, y2), radius=radius, fill=(0, 0, 0, 26))  # 10% opacity = 26/255
             
             # Convert base image to RGBA for blending
             base = self.image.convert('RGBA')

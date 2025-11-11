@@ -152,6 +152,10 @@ class MusicPlayer:
             
         print(f"Playing: {os.path.basename(filepath)}")
         
+        # Update display with new song (expensive operations: load art, extract colors)
+        if self.display:
+            self.display.update_song(filepath)
+        
         try:
             # Use mpg123 for playback
             self.current_process = subprocess.Popen(
