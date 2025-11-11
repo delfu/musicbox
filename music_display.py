@@ -174,7 +174,7 @@ class MusicDisplay:
             total_tracks: Total number of tracks
             force_show_volume: Force display of volume bar (when volume is being adjusted)
         """
-        self.clear()
+        # No need to clear - album art fills entire screen and acts as background
         
         # Check if volume bar should be shown
         show_volume = force_show_volume or self._should_show_volume_bar()
@@ -208,9 +208,12 @@ class MusicDisplay:
                 # Paste artwork (will be cropped if it overflows)
                 self.image.paste(artwork_resized, (x_offset, y_offset))
             else:
-                # Draw placeholder filling entire screen
+                # No album art - clear to black and draw placeholder
+                self.draw.rectangle((0, 0, self.width, self.height), fill=self.BLACK)
                 self._draw_album_art_placeholder(0, 0, min(self.width, self.height))
         else:
+            # Stopped state - clear to black and draw placeholder
+            self.draw.rectangle((0, 0, self.width, self.height), fill=self.BLACK)
             self._draw_album_art_placeholder(0, 0, min(self.width, self.height))
         
         # Text overlaid at bottom of screen (on top of album art)
