@@ -219,8 +219,8 @@ class MusicDisplay:
         else:
             self._draw_album_art_placeholder(artwork_x, artwork_y, artwork_size)
         
-        # Song title (below album art) - left aligned
-        title_y = artwork_y + artwork_size + 10
+        # Song title (below album art) - left aligned, with some overlap
+        title_y = artwork_y + artwork_size - 10
         
         # Text box is fixed at 20px from left and right edges (accounting for volume bar)
         text_box_margin = 20
@@ -275,11 +275,6 @@ class MusicDisplay:
                 if isinstance(pixel, tuple) and len(pixel) >= 3:
                     r, g, b = pixel[0], pixel[1], pixel[2]
                     
-                    # Skip very dark (< 30) and very bright (> 240) pixels
-                    brightness = (r + g + b) / 3
-                    if brightness < 30 or brightness > 240:
-                        continue
-                    
                     # Round to nearest 8 to group similar colors
                     r_rounded = (r // 8) * 8
                     g_rounded = (g // 8) * 8
@@ -293,12 +288,7 @@ class MusicDisplay:
                 dominant_color = max(color_counts, key=color_counts.get)
                 dom_r, dom_g, dom_b = dominant_color
                 
-                # Darken the color for background (multiply by 0.4 to make it darker)
-                bg_r = int(dom_r * 0.4)
-                bg_g = int(dom_g * 0.4)
-                bg_b = int(dom_b * 0.4)
-                
-                self.current_bg_color = (bg_r, bg_g, bg_b)
+                self.current_bg_color = (dom_r, dom_g, dom_b)
                 
                 # Use slightly brighter version for accent (volume bar)
                 accent_r = min(255, int(dom_r * 0.8))
