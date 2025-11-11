@@ -22,10 +22,6 @@ class MusicDisplay:
         self.last_volume_change_time = 0
         self.volume_display_duration = 3.0  # Show volume bar for 3 seconds
         
-        # Dynamic color based on album art
-        self.current_bg_color = None
-        self.current_accent_color = None
-        
         # Cached song data (updated by update_song())
         self.current_song_name = ""
         self.current_album_name = ""
@@ -88,23 +84,22 @@ class MusicDisplay:
         self.clear()
         
     def clear(self, color=None):
-        """Clear the display"""
+        """Clear the display to pure black"""
         if color is None:
-            # Use dynamic background color if available, otherwise default
-            color = self.current_bg_color if self.current_bg_color else self.DARK_BG
+            color = self.BLACK  # Always use pure black
         self.draw.rectangle((0, 0, self.width, self.height), fill=color)
         self.display.image(self.image)
     
     def cleanup(self):
         try:
-            self.clear()
+            self.clear(self.BLACK)  # Always clear to pure black on cleanup
         except:
             print("Screen failed to clear")
         
     def update_song(self, filename):
         """
         Update internal state when a new song starts playing.
-        This method performs expensive operations like loading album art and extracting colors.
+        This method performs expensive operations like loading album art and metadata.
         Call this once per song, then call update_now_playing() for state changes.
         
         Args:
@@ -113,8 +108,7 @@ class MusicDisplay:
         # Extract song and album metadata
         self.current_song_name, self.current_album_name = self._extract_metadata(filename)
         
-        # Load album art and extract colors
-        artwork_image = None
+        # Load album art
         try:
             audio = ID3(filename)
             
@@ -124,22 +118,14 @@ class MusicDisplay:
                     # Load image from tag data
                     artwork_image = Image.open(io.BytesIO(tag.data))
                     self.current_artwork = artwork_image
-                    
-                    # Extract dominant color from artwork
-                    self._extract_colors_from_artwork(artwork_image)
                     break
-            
-            if not artwork_image:
+            else:
                 # No album art found
                 self.current_artwork = None
-                self.current_bg_color = self.DARK_BG
-                self.current_accent_color = self.GREEN
                 
         except Exception as e:
             print(f"Error loading album art: {e}")
             self.current_artwork = None
-            self.current_bg_color = self.DARK_BG
-            self.current_accent_color = self.GREEN
     
     def show_splash(self):
         """Show modern splash screen"""
@@ -203,10 +189,15 @@ class MusicDisplay:
         song_name = self.current_song_name if self.current_song_name else "Unknown Track"
         album_name = self.current_album_name if self.current_album_name else "Unknown Album"
         
-        # Display album art (centered in available space)
-        artwork_size = 160  # Album art size that leaves room for text
+        # Display large album art - fill most of the screen
+        # Calculate maximum size that fits in the display
+        max_artwork_height = self.height - 70  # Leave ~70px for text at bottom
+        max_artwork_width = main_content_width - 20  # Small margins
+        artwork_size = min(max_artwork_height, max_artwork_width)
+        
+        # Center the album art
         artwork_x = (main_content_width - artwork_size) // 2
-        artwork_y = 15
+        artwork_y = (self.height - artwork_size - 70) // 2  # Center with text space at bottom
         
         if state == "PLAYING" or state == "PAUSED":
             if self.current_artwork:
@@ -219,8 +210,8 @@ class MusicDisplay:
         else:
             self._draw_album_art_placeholder(artwork_x, artwork_y, artwork_size)
         
-        # Song title (below album art) - left aligned, with some overlap
-        title_y = artwork_y + artwork_size - 10
+        # Song title at bottom of screen
+        title_y = self.height - 60  # Fixed position from bottom
         
         # Text box is fixed at 20px from left and right edges (accounting for volume bar)
         text_box_margin = 20
@@ -254,58 +245,6 @@ class MusicDisplay:
         
         # Update display
         self.display.image(self.image)
-    
-    def _extract_colors_from_artwork(self, artwork_image):
-        """
-        Extract most prominent (most frequent) color from album artwork for background
-        
-        Args:
-            artwork_image: PIL Image object of the album art
-        """
-        try:
-            # Resize image for faster color analysis
-            small_image = artwork_image.resize((50, 50), Image.LANCZOS)
-            
-            # Get all pixels
-            pixels = list(small_image.getdata())
-            
-            # Count color frequency, ignoring very dark and very bright pixels
-            color_counts = {}
-            for pixel in pixels:
-                if isinstance(pixel, tuple) and len(pixel) >= 3:
-                    r, g, b = pixel[0], pixel[1], pixel[2]
-                    
-                    # Round to nearest 8 to group similar colors
-                    r_rounded = (r // 8) * 8
-                    g_rounded = (g // 8) * 8
-                    b_rounded = (b // 8) * 8
-                    color_key = (r_rounded, g_rounded, b_rounded)
-                    
-                    color_counts[color_key] = color_counts.get(color_key, 0) + 1
-            
-            if color_counts:
-                # Find most frequent color
-                dominant_color = max(color_counts, key=color_counts.get)
-                dom_r, dom_g, dom_b = dominant_color
-                
-                self.current_bg_color = (dom_r, dom_g, dom_b)
-                
-                # Use slightly brighter version for accent (volume bar)
-                accent_r = min(255, int(dom_r * 0.8))
-                accent_g = min(255, int(dom_g * 0.8))
-                accent_b = min(255, int(dom_b * 0.8))
-                self.current_accent_color = (accent_r, accent_g, accent_b)
-                
-                print(f"Extracted prominent color: RGB{dominant_color} -> BG{self.current_bg_color}, Accent{self.current_accent_color}")
-            else:
-                # Fallback to default colors
-                self.current_bg_color = self.DARK_BG
-                self.current_accent_color = self.GREEN
-                
-        except Exception as e:
-            print(f"Error extracting colors: {e}")
-            self.current_bg_color = self.DARK_BG
-            self.current_accent_color = self.GREEN
     
     def _draw_text_background(self, x1, y1, x2, y2, radius=5):
         """
@@ -436,11 +375,10 @@ class MusicDisplay:
             segment_index = num_segments - i - 1
             
             if segment_index < filled_segments:
-                # Filled segment - use accent color from album art
-                fill_color = self.current_accent_color if self.current_accent_color else self.GREEN
+                # Filled segment - use green
                 self.draw.rectangle(
                     (seg_x, seg_y, seg_x + segment_width, seg_y + segment_height),
-                    fill=fill_color
+                    fill=self.GREEN
                 )
             else:
                 # Empty segment - use dark background
