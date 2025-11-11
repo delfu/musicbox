@@ -50,6 +50,8 @@ class MusicPlayer:
         if display_enabled:
             try:
                 self.display = MusicDisplay(270)
+                # Set up callback for volume bar auto-hide
+                self.display.set_refresh_callback(self.update_display)
                 self.display.show_splash()
             except Exception as e:
                 print(f"Display initialization failed: {e}")

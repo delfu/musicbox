@@ -21,6 +21,7 @@ class MusicDisplay:
         # Volume bar visibility tracking
         self.last_volume_change_time = 0
         self.volume_display_duration = 3.0  # Show volume bar for 3 seconds
+        self.refresh_callback = None  # Callback to trigger display refresh
         
         # Cached song data (updated by update_song())
         self.current_song_name = ""
@@ -177,46 +178,47 @@ class MusicDisplay:
         # Check if volume bar should be shown
         show_volume = force_show_volume or self._should_show_volume_bar()
         
-        # Volume bar area (right edge, 30px wide when visible)
-        volume_bar_width = 30 if show_volume else 0
-        main_content_width = self.width - volume_bar_width
-        
-        # Draw vertical volume bar on the right edge (only if visible)
-        if show_volume:
-            self._draw_vertical_volume_bar(volume, volume_bar_width)
-        
         # Use cached song metadata (should be set by update_song())
         song_name = self.current_song_name if self.current_song_name else "Unknown Track"
         album_name = self.current_album_name if self.current_album_name else "Unknown Album"
         
-        # Display large album art - fill most of the screen
-        # Calculate maximum size that fits in the display
-        max_artwork_height = self.height - 70  # Leave ~70px for text at bottom
-        max_artwork_width = main_content_width - 20  # Small margins
-        artwork_size = min(max_artwork_height, max_artwork_width)
-        
-        # Center the album art
-        artwork_x = (main_content_width - artwork_size) // 2
-        artwork_y = (self.height - artwork_size - 70) // 2  # Center with text space at bottom
-        
+        # Display album art filling entire screen (preserving aspect ratio, centered, can overflow)
         if state == "PLAYING" or state == "PAUSED":
             if self.current_artwork:
-                # Use cached artwork (already resized and color-extracted)
-                artwork_resized = self.current_artwork.resize((artwork_size, artwork_size), Image.LANCZOS)
-                self.image.paste(artwork_resized, (artwork_x, artwork_y))
+                # Get original dimensions
+                orig_width, orig_height = self.current_artwork.size
+                
+                # Calculate scaling to fill entire screen (preserving aspect ratio)
+                scale_w = self.width / orig_width
+                scale_h = self.height / orig_height
+                scale = max(scale_w, scale_h)  # Use max to ensure it fills (will overflow)
+                
+                # Calculate new dimensions
+                new_width = int(orig_width * scale)
+                new_height = int(orig_height * scale)
+                
+                # Resize artwork
+                artwork_resized = self.current_artwork.resize((new_width, new_height), Image.LANCZOS)
+                
+                # Calculate position to center it
+                x_offset = (self.width - new_width) // 2
+                y_offset = (self.height - new_height) // 2
+                
+                # Paste artwork (will be cropped if it overflows)
+                self.image.paste(artwork_resized, (x_offset, y_offset))
             else:
-                # Draw placeholder if no album art
-                self._draw_album_art_placeholder(artwork_x, artwork_y, artwork_size)
+                # Draw placeholder filling entire screen
+                self._draw_album_art_placeholder(0, 0, min(self.width, self.height))
         else:
-            self._draw_album_art_placeholder(artwork_x, artwork_y, artwork_size)
+            self._draw_album_art_placeholder(0, 0, min(self.width, self.height))
         
-        # Song title at bottom of screen
+        # Text overlaid at bottom of screen (on top of album art)
         title_y = self.height - 60  # Fixed position from bottom
         
-        # Text box is fixed at 20px from left and right edges (accounting for volume bar)
+        # Text box is fixed at 20px from left and right edges
         text_box_margin = 20
         text_area_x1 = text_box_margin
-        text_area_x2 = main_content_width - text_box_margin
+        text_area_x2 = self.width - text_box_margin  # Use full width now
         
         # Text padding inside the box
         text_padding = 12
@@ -238,6 +240,10 @@ class MusicDisplay:
         # Album name (below song title, smaller and gray) - left aligned
         self._draw_text_with_truncate(album_name, text_x, album_y, self.font_subtitle, 
                                       self.GRAY, max_width=text_max_width)
+        
+        # Draw volume bar overlaid on top (if visible)
+        if show_volume:
+            self._draw_vertical_volume_bar(volume, 30)
         
         # Draw pause overlay if paused
         if state == "PAUSED":
@@ -315,11 +321,34 @@ class MusicDisplay:
             fill=self.WHITE
         )
     
+    def set_refresh_callback(self, callback):
+        """
+        Set a callback function to trigger display refresh
+        The callback will be called when the volume bar should disappear
+        
+        Args:
+            callback: Function to call for display refresh
+        """
+        self.refresh_callback = callback
+    
     def notify_volume_change(self):
         """
         Call this method when volume is changed to trigger display of volume bar
+        Also schedules a refresh after the timeout period
         """
         self.last_volume_change_time = time.time()
+        
+        # Schedule a refresh after the volume bar should disappear
+        if self.refresh_callback:
+            import threading
+            def delayed_refresh():
+                time.sleep(self.volume_display_duration + 0.1)  # Wait slightly longer than timeout
+                if self.refresh_callback:
+                    self.refresh_callback()
+            
+            # Start thread to trigger refresh after delay
+            refresh_thread = threading.Thread(target=delayed_refresh, daemon=True)
+            refresh_thread.start()
     
     def _should_show_volume_bar(self):
         """
