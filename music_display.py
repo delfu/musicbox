@@ -143,9 +143,9 @@ class MusicDisplay:
         song_name, album_name = self._extract_metadata(filename)
         
         # Fetch and display large album art
-        artwork_size = 200  # Larger album art
+        artwork_size = 160  # Album art size that leaves room for text
         artwork_x = (main_content_width - artwork_size) // 2
-        artwork_y = 20
+        artwork_y = 15
         
         if state == "PLAYING" or state == "PAUSED":
             has_art = self.paste_album_art(filename, artwork_x, artwork_y, artwork_size)
@@ -156,12 +156,12 @@ class MusicDisplay:
             self._draw_album_art_placeholder(artwork_x, artwork_y, artwork_size)
         
         # Song title (below album art)
-        title_y = artwork_y + artwork_size + 15
+        title_y = artwork_y + artwork_size + 10
         self._draw_centered_text(song_name, title_y, self.font_title, 
                                 self.WHITE, max_width=main_content_width - 20)
         
         # Album name (below song title, smaller and gray)
-        album_y = title_y + 28
+        album_y = title_y + 26
         self._draw_centered_text(album_name, album_y, self.font_subtitle, 
                                 self.GRAY, max_width=main_content_width - 20)
         
@@ -177,25 +177,37 @@ class MusicDisplay:
             bar_width: Width of the volume bar area
         """
         bar_x = self.width - bar_width
-        bar_height = 200  # Total height for volume indicators
-        bar_y = (self.height - bar_height) // 2
+        
+        # Volume percentage text at the top
+        vol_text = f"{volume}%"
+        bbox = self.draw.textbbox((0, 0), vol_text, font=self.font_small)
+        text_width = bbox[2] - bbox[0]
+        text_x = bar_x + (bar_width - text_width) // 2
+        text_y = 10
+        self.draw.text((text_x, text_y), vol_text, font=self.font_small, fill=self.GRAY)
+        
+        # Smaller, more subtle volume bar
+        bar_height = 140  # Total height for volume indicators
+        bar_start_y = 35  # Start below the percentage text
         
         # Number of segments (0-10)
         num_segments = 10
-        segment_height = 15
-        segment_gap = 5
-        segment_width = bar_width - 10
+        segment_height = 10  # Smaller notches
+        segment_gap = 4
+        segment_width = 16  # Narrower segments
         
         # Calculate how many segments should be filled
         filled_segments = int((volume / 100) * num_segments)
         
-        # Draw each segment (from bottom to top)
+        # Draw each segment (from top to bottom, filling from bottom up)
         for i in range(num_segments):
-            segment_index = num_segments - i - 1  # Bottom is 0, top is 9
-            seg_y = bar_y + bar_height - (i + 1) * (segment_height + segment_gap)
-            seg_x = bar_x + 5
+            seg_y = bar_start_y + i * (segment_height + segment_gap)
+            seg_x = bar_x + (bar_width - segment_width) // 2
             
             # Determine if this segment should be filled
+            # Top segment is index 9, bottom is index 0
+            segment_index = num_segments - i - 1
+            
             if segment_index < filled_segments:
                 # Filled segment - use green
                 self.draw.rectangle(
