@@ -18,6 +18,10 @@ class MusicDisplay:
         """
         Initialize the 2.8" TFT display
         """
+        # Volume bar visibility tracking
+        self.last_volume_change_time = 0
+        self.volume_display_duration = 2.0  # Show volume bar for 2 seconds
+        
         # Configuration for display
         # CS pin will be tied to GND and is always active. tying it to CE0 causes GPIO busy, im not sure why
         cs_pin = None# digitalio.DigitalInOut(board.CE0)
@@ -49,7 +53,7 @@ class MusicDisplay:
         try:
             self.font_splash = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
             self.font_splash_sub = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18)
-            self.font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 22)
+            self.font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 26)  # Bigger and bold
             self.font_subtitle = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 16)
             self.font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
         except:
@@ -119,7 +123,7 @@ class MusicDisplay:
         self.display.image(self.image)
         
     def update_now_playing(self, filename, state="PLAYING", volume=80, 
-                           current_index=0, total_tracks=0):
+                           current_index=0, total_tracks=0, force_show_volume=False):
         """
         Update the now playing screen with modern design
         
@@ -129,20 +133,25 @@ class MusicDisplay:
             volume: Current volume percentage (0-100)
             current_index: Current track number
             total_tracks: Total number of tracks
+            force_show_volume: Force display of volume bar (when volume is being adjusted)
         """
         self.clear()
         
-        # Volume bar area (right edge, 30px wide)
-        volume_bar_width = 30
+        # Check if volume bar should be shown
+        show_volume = force_show_volume or self._should_show_volume_bar()
+        
+        # Volume bar area (right edge, 30px wide when visible)
+        volume_bar_width = 30 if show_volume else 0
         main_content_width = self.width - volume_bar_width
         
-        # Draw vertical volume bar on the right edge
-        self._draw_vertical_volume_bar(volume, volume_bar_width)
+        # Draw vertical volume bar on the right edge (only if visible)
+        if show_volume:
+            self._draw_vertical_volume_bar(volume, volume_bar_width)
         
         # Extract song and album info from metadata
         song_name, album_name = self._extract_metadata(filename)
         
-        # Fetch and display large album art
+        # Fetch and display large album art (centered in available space)
         artwork_size = 160  # Album art size that leaves room for text
         artwork_x = (main_content_width - artwork_size) // 2
         artwork_y = 15
@@ -155,18 +164,38 @@ class MusicDisplay:
         else:
             self._draw_album_art_placeholder(artwork_x, artwork_y, artwork_size)
         
-        # Song title (below album art)
+        # Song title (below album art) - left aligned
         title_y = artwork_y + artwork_size + 10
-        self._draw_centered_text(song_name, title_y, self.font_title, 
-                                self.WHITE, max_width=main_content_width - 20)
+        text_x = 10  # Left margin
+        self._draw_text_with_truncate(song_name, text_x, title_y, self.font_title, 
+                                      self.WHITE, max_width=main_content_width - 20)
         
-        # Album name (below song title, smaller and gray)
-        album_y = title_y + 26
-        self._draw_centered_text(album_name, album_y, self.font_subtitle, 
-                                self.GRAY, max_width=main_content_width - 20)
+        # Album name (below song title, smaller and gray) - left aligned
+        album_y = title_y + 30
+        self._draw_text_with_truncate(album_name, text_x, album_y, self.font_subtitle, 
+                                      self.GRAY, max_width=main_content_width - 20)
         
         # Update display
         self.display.image(self.image)
+    
+    def notify_volume_change(self):
+        """
+        Call this method when volume is changed to trigger display of volume bar
+        """
+        self.last_volume_change_time = time.time()
+    
+    def _should_show_volume_bar(self):
+        """
+        Check if volume bar should be shown based on time since last change
+        
+        Returns:
+            True if volume bar should be visible, False otherwise
+        """
+        if self.last_volume_change_time == 0:
+            return False
+        
+        elapsed = time.time() - self.last_volume_change_time
+        return elapsed < self.volume_display_duration
     
     def _draw_vertical_volume_bar(self, volume, bar_width):
         """
@@ -221,12 +250,13 @@ class MusicDisplay:
                     fill=self.VOLUME_BAR_BG
                 )
     
-    def _draw_centered_text(self, text, y, font, color, max_width=None):
+    def _draw_text_with_truncate(self, text, x, y, font, color, max_width=None):
         """
-        Draw text centered horizontally, with optional truncation
+        Draw text at specified position with optional truncation
         
         Args:
             text: Text to draw
+            x: X coordinate
             y: Y coordinate
             font: Font to use
             color: Text color
@@ -244,9 +274,41 @@ class MusicDisplay:
                     text_width = bbox[2] - bbox[0]
                 text = text + "..."
         
-        # Center the text (accounting for volume bar)
-        volume_bar_width = 30
-        content_width = self.width - volume_bar_width
+        self.draw.text((x, y), text, font=font, fill=color)
+    
+    def _draw_centered_text(self, text, y, font, color, max_width=None, full_width=False):
+        """
+        Draw text centered horizontally, with optional truncation
+        
+        Args:
+            text: Text to draw
+            y: Y coordinate
+            font: Font to use
+            color: Text color
+            max_width: Maximum width before truncation
+            full_width: If True, center in full display width (for splash screen)
+        """
+        # Truncate if needed
+        if max_width:
+            bbox = self.draw.textbbox((0, 0), text, font=font)
+            text_width = bbox[2] - bbox[0]
+            if text_width > max_width:
+                # Truncate and add ellipsis
+                while text_width > max_width and len(text) > 3:
+                    text = text[:-1]
+                    bbox = self.draw.textbbox((0, 0), text + "...", font=font)
+                    text_width = bbox[2] - bbox[0]
+                text = text + "..."
+        
+        # Center the text
+        if full_width:
+            # Use full width (for splash screen)
+            content_width = self.width
+        else:
+            # Account for potential volume bar
+            volume_bar_width = 30 if self._should_show_volume_bar() else 0
+            content_width = self.width - volume_bar_width
+        
         bbox = self.draw.textbbox((0, 0), text, font=font)
         text_width = bbox[2] - bbox[0]
         x = (content_width - text_width) // 2

@@ -123,6 +123,11 @@ class MusicPlayer:
                 check=False
             )
             print(f"Volume: {self.volume}%")
+            
+            # Notify display that volume changed
+            if self.display:
+                self.display.notify_volume_change()
+            
             self.update_display()
         except Exception as e:
             print(f"Error setting volume: {e}")
