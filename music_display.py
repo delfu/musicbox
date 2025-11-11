@@ -53,8 +53,8 @@ class MusicDisplay:
         try:
             self.font_splash = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
             self.font_splash_sub = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18)
-            self.font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 26)  # Bigger and bold
-            self.font_subtitle = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 16)
+            self.font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 48)  # Bigger and bold
+            self.font_subtitle = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
             self.font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
         except:
             # Fallback to default font
@@ -166,7 +166,7 @@ class MusicDisplay:
         
         # Song title (below album art) - left aligned
         title_y = artwork_y + artwork_size + 10
-        text_x = 10  # Left margin
+        text_x = 50  # Left margin
         self._draw_text_with_truncate(song_name, text_x, title_y, self.font_title, 
                                       self.WHITE, max_width=main_content_width - 20)
         
