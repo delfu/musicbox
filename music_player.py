@@ -408,7 +408,7 @@ class MusicPlayer:
                            encoder_a_pin: int = 6,
                            encoder_b_pin: int = 5,
                            encoder_sw_pin: int = 13,
-                           debounce_time: float = 0.2):
+                           debounce_time: float = 0.01):
         """
         Setup GPIO pins for physical controls using gpiozero
         
