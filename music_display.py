@@ -22,6 +22,10 @@ class MusicDisplay:
         self.last_volume_change_time = 0
         self.volume_display_duration = 3.0  # Show volume bar for 3 seconds
         
+        # Dynamic color based on album art
+        self.current_bg_color = None
+        self.current_accent_color = None
+        
         # Configuration for display
         # CS pin will be tied to GND and is always active. tying it to CE0 causes GPIO busy, im not sure why
         cs_pin = None# digitalio.DigitalInOut(board.CE0)
@@ -81,7 +85,8 @@ class MusicDisplay:
     def clear(self, color=None):
         """Clear the display"""
         if color is None:
-            color = self.DARK_BG
+            # Use dynamic background color if available, otherwise default
+            color = self.current_bg_color if self.current_bg_color else self.DARK_BG
         self.draw.rectangle((0, 0, self.width, self.height), fill=color)
         self.display.image(self.image)
     
@@ -157,23 +162,42 @@ class MusicDisplay:
         artwork_x = (main_content_width - artwork_size) // 2
         artwork_y = 15
         
+        # Load album art and extract dominant color
+        artwork_image = None
         if state == "PLAYING" or state == "PAUSED":
-            has_art = self.paste_album_art(filename, artwork_x, artwork_y, artwork_size)
+            has_art, artwork_image = self.paste_album_art(filename, artwork_x, artwork_y, artwork_size, return_image=True)
+            if has_art and artwork_image:
+                # Extract dominant color from album art
+                self._extract_colors_from_artwork(artwork_image)
             if not has_art:
                 # Draw placeholder if no album art
                 self._draw_album_art_placeholder(artwork_x, artwork_y, artwork_size)
+                self.current_bg_color = self.DARK_BG  # Reset to default
+                self.current_accent_color = self.GREEN
         else:
             self._draw_album_art_placeholder(artwork_x, artwork_y, artwork_size)
+            self.current_bg_color = self.DARK_BG
+            self.current_accent_color = self.GREEN
         
         # Song title (below album art) - left aligned
         title_y = artwork_y + artwork_size + 10
         text_x = 50  # Left margin
         text_max_width = main_content_width - text_x - 10  # Account for left margin + right padding
+        
+        # Draw text area background with 10% opacity black for readability
+        text_area_padding = 12
+        album_y = title_y + 30
+        text_area_x1 = text_x - text_area_padding
+        text_area_y1 = title_y - text_area_padding
+        text_area_x2 = main_content_width - 10
+        text_area_y2 = album_y + 25  # Height to cover both song and album text with padding
+        self._draw_text_background(text_area_x1, text_area_y1, text_area_x2, text_area_y2)
+        
+        # Now draw the text on top of the background
         self._draw_text_with_truncate(song_name, text_x, title_y, self.font_title, 
                                       self.WHITE, max_width=text_max_width)
         
         # Album name (below song title, smaller and gray) - left aligned
-        album_y = title_y + 30
         self._draw_text_with_truncate(album_name, text_x, album_y, self.font_subtitle, 
                                       self.GRAY, max_width=text_max_width)
         
@@ -183,6 +207,91 @@ class MusicDisplay:
         
         # Update display
         self.display.image(self.image)
+    
+    def _extract_colors_from_artwork(self, artwork_image):
+        """
+        Extract dominant color from album artwork for background
+        
+        Args:
+            artwork_image: PIL Image object of the album art
+        """
+        try:
+            # Resize image for faster color analysis
+            small_image = artwork_image.resize((50, 50), Image.LANCZOS)
+            
+            # Get all pixels
+            pixels = list(small_image.getdata())
+            
+            # Calculate average color with a bias towards darker/more saturated colors
+            # This gives a more aesthetically pleasing background
+            r_total = 0
+            g_total = 0
+            b_total = 0
+            count = 0
+            
+            for pixel in pixels:
+                if isinstance(pixel, tuple) and len(pixel) >= 3:
+                    r, g, b = pixel[0], pixel[1], pixel[2]
+                    # Weight darker pixels more heavily
+                    brightness = (r + g + b) / 3
+                    weight = 1.0 if brightness < 128 else 0.5
+                    r_total += r * weight
+                    g_total += g * weight
+                    b_total += b * weight
+                    count += weight
+            
+            if count > 0:
+                avg_r = int(r_total / count)
+                avg_g = int(g_total / count)
+                avg_b = int(b_total / count)
+                
+                # Darken the color for background (multiply by 0.4 to make it darker)
+                bg_r = int(avg_r * 0.4)
+                bg_g = int(avg_g * 0.4)
+                bg_b = int(avg_b * 0.4)
+                
+                self.current_bg_color = (bg_r, bg_g, bg_b)
+                
+                # Use slightly brighter version for accent (volume bar)
+                accent_r = min(255, int(avg_r * 0.8))
+                accent_g = min(255, int(avg_g * 0.8))
+                accent_b = min(255, int(avg_b * 0.8))
+                self.current_accent_color = (accent_r, accent_g, accent_b)
+            else:
+                # Fallback to default colors
+                self.current_bg_color = self.DARK_BG
+                self.current_accent_color = self.GREEN
+                
+        except Exception as e:
+            print(f"Error extracting colors: {e}")
+            self.current_bg_color = self.DARK_BG
+            self.current_accent_color = self.GREEN
+    
+    def _draw_text_background(self, x1, y1, x2, y2):
+        """
+        Draw a semi-transparent black background for text area
+        
+        Args:
+            x1, y1: Top-left corner
+            x2, y2: Bottom-right corner
+        """
+        try:
+            # Create overlay with 10% opacity black
+            overlay = Image.new('RGBA', (self.width, self.height), (0, 0, 0, 0))
+            overlay_draw = ImageDraw.Draw(overlay)
+            overlay_draw.rectangle((x1, y1, x2, y2), fill=(0, 0, 0, 26))  # 10% opacity = 26/255
+            
+            # Convert base image to RGBA for blending
+            base = self.image.convert('RGBA')
+            
+            # Composite the overlay
+            composited = Image.alpha_composite(base, overlay)
+            
+            # Convert back to RGB
+            self.image = composited.convert('RGB')
+            self.draw = ImageDraw.Draw(self.image)
+        except Exception as e:
+            print(f"Error drawing text background: {e}")
     
     def _draw_pause_overlay(self):
         """
@@ -286,10 +395,11 @@ class MusicDisplay:
             segment_index = num_segments - i - 1
             
             if segment_index < filled_segments:
-                # Filled segment - use green
+                # Filled segment - use accent color from album art
+                fill_color = self.current_accent_color if self.current_accent_color else self.GREEN
                 self.draw.rectangle(
                     (seg_x, seg_y, seg_x + segment_width, seg_y + segment_height),
-                    fill=self.GREEN
+                    fill=fill_color
                 )
             else:
                 # Empty segment - use dark background
@@ -415,7 +525,7 @@ class MusicDisplay:
         
         return song_name, album_name
         
-    def paste_album_art(self, mp3_file, x=None, y=None, size=None):
+    def paste_album_art(self, mp3_file, x=None, y=None, size=None, return_image=False):
         """
         Extract and display album art from MP3 file
         
@@ -424,9 +534,11 @@ class MusicDisplay:
             x: X position (default: centered)
             y: Y position (default: 40)
             size: Size of the square artwork (default: 200)
+            return_image: If True, return tuple of (success, image), else just success
         
         Returns:
-            True if album art was found and displayed, False otherwise
+            If return_image is True: tuple of (success, PIL.Image or None)
+            If return_image is False: True if album art was found and displayed, False otherwise
         """
         if size is None:
             size = 200
@@ -449,7 +561,13 @@ class MusicDisplay:
                     
                     # Paste onto display image
                     self.image.paste(artwork, (x, y))
+                    
+                    if return_image:
+                        return True, artwork
                     return True
         except:
             pass
+        
+        if return_image:
+            return False, None
         return False
